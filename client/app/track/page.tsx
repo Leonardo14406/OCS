@@ -46,23 +46,29 @@ interface TrackedComplaint {
 
 export default function TrackComplaintPage() {
   const searchParams = useSearchParams()
-  const [complaintId, setComplaintId] = useState(searchParams.get("id") || "")
+  const [trackingNumber, setTrackingNumber] = useState(searchParams.get("trackingNumber") || "")
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState("")
   const [complaint, setComplaint] = useState<TrackedComplaint | null>(null)
 
   useEffect(() => {
-    const idFromUrl = searchParams.get("id")
-    if (idFromUrl) {
-      handleTrack(idFromUrl)
+    const trackingFromUrl = searchParams.get("trackingNumber")
+    if (trackingFromUrl) {
+      handleTrack(trackingFromUrl)
     }
   }, [])
 
-  const handleTrack = async (id?: string) => {
-    const raw = (id || complaintId).trim()
+  const handleTrack = async (trackingId?: string) => {
+    const raw = (trackingId || trackingNumber).trim()
 
     if (!raw) {
-      setError("Please enter a complaint ID or tracking number")
+      setError("Please enter your tracking number")
+      return
+    }
+
+    // Validate OMB format
+    if (!/^OMB-[A-Z0-9]+-[A-Z0-9]+$/i.test(raw)) {
+      setError("Invalid tracking number format. Please use format: OMB-XXXXXXXX-XXXXXXXX")
       return
     }
 
@@ -71,17 +77,8 @@ export default function TrackComplaintPage() {
     setComplaint(null)
 
     try {
-      let res: Response
-      const value = raw.toUpperCase()
-
-      if (value.startsWith("CMP-")) {
-        // Authenticated tracking by complaint ID
-        res = await fetch(`/api/complaints/${encodeURIComponent(value)}`)
-      } else {
-        // Public tracking by private tracking number
-        const params = new URLSearchParams({ trackingNumber: raw })
-        res = await fetch(`/api/public/complaints/track?${params.toString()}`)
-      }
+      const params = new URLSearchParams({ trackingNumber: raw.toUpperCase() })
+      const res = await fetch(`/api/public/complaints/track?${params.toString()}`)
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -125,7 +122,7 @@ export default function TrackComplaintPage() {
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl mb-3">Track Your Complaint</h1>
             <p className="text-muted-foreground text-pretty leading-relaxed">
-              Enter your complaint ID to view the current status and investigation progress.
+              Enter your OMB tracking number to view the current status and investigation progress.
             </p>
           </div>
 
@@ -134,7 +131,7 @@ export default function TrackComplaintPage() {
             <CardHeader>
               <CardTitle>Complaint Lookup</CardTitle>
               <CardDescription>
-                Use your complaint ID (e.g., CMP-2024-001) or private tracking number to view your complaint.
+                Enter your OMB tracking number (format: OMB-XXXXXXXX-XXXXXXXX) to view your complaint status.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -147,14 +144,14 @@ export default function TrackComplaintPage() {
               >
                 <div className="flex flex-col gap-4 sm:flex-row">
                   <div className="flex-1 space-y-2">
-                    <Label htmlFor="complaintId" className="sr-only">
-                      Complaint ID or tracking number
+                    <Label htmlFor="trackingNumber" className="sr-only">
+                      OMB Tracking Number
                     </Label>
                     <Input
-                      id="complaintId"
-                      value={complaintId}
-                      onChange={(e) => setComplaintId(e.target.value)}
-                      placeholder="CMP-2024-XXX or tracking number"
+                      id="trackingNumber"
+                      value={trackingNumber}
+                      onChange={(e) => setTrackingNumber(e.target.value)}
+                      placeholder="OMB-XXXXXXXX-XXXXXXXX"
                       className="font-mono"
                     />
                   </div>
@@ -192,7 +189,7 @@ export default function TrackComplaintPage() {
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <CardTitle className="flex items-center gap-2">
-                        Complaint {complaint.id}
+                        Complaint {complaint.trackingNumber || complaint.id}
                         <StatusBadge status={complaint.status} />
                       </CardTitle>
                       <CardDescription className="mt-2">

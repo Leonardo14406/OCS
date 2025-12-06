@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    const result = complaints.map((c) => ({
+    const result = complaints.map((c:any) => ({
       id: c.id,
       subject: c.subject,
       description: c.description,
