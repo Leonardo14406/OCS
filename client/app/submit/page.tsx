@@ -368,7 +368,7 @@ export default function SubmitComplaintPage() {
                             </SelectTrigger>
                             <SelectContent>
                               {ministries.map((ministry) => (
-                                <SelectItem key={ministry.id} value={ministry.name}>
+                                <SelectItem key={`${ministry.id}-${ministry.name}`} value={ministry.name}>
                                   {ministry.name}
                                 </SelectItem>
                               ))}
@@ -388,7 +388,7 @@ export default function SubmitComplaintPage() {
                             </SelectTrigger>
                             <SelectContent>
                               {categories.map((category) => (
-                                <SelectItem key={category.id} value={category.name}>
+                                <SelectItem key={`${category.id}-${category.name}`} value={category.name}>
                                   {category.name}
                                 </SelectItem>
                               ))}

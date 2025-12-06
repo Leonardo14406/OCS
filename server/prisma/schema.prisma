@@ -330,6 +330,7 @@ model ConversationSession {
   email           String?
   phone           String?
   address         String?
+  preferNoContact Boolean           @default(false)
   
   // Complaint details
   ministry        String?

@@ -6,6 +6,35 @@ export const complaintTools: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "extract_contact_info",
+      description: "Extract and save contact information (phone number and optional email) from the user's message",
+      parameters: {
+        type: "object",
+        properties: {
+          sessionId: {
+            type: "string",
+            description: "The session identifier"
+          },
+          phoneNumber: {
+            type: "string",
+            description: "The user's phone number (extracted from message or context)"
+          },
+          email: {
+            type: "string",
+            description: "The user's email address (optional)"
+          },
+          preferNoContact: {
+            type: "boolean",
+            description: "Whether the user prefers not to provide contact information"
+          }
+        },
+        required: ["sessionId", "phoneNumber"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "create_complaint",
       description: "Create a new complaint with collected session data",
       parameters: {
@@ -58,6 +87,69 @@ export const complaintTools: ChatCompletionTool[] = [
   }
 ];
 
+export async function extractContactInfoHandler(args: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const { sessionId, phoneNumber, email, preferNoContact = false } = args;
+    const { prisma } = context;
+
+    // Get session data
+    const session = await prisma.conversationSession.findUnique({
+      where: { sessionId }
+    });
+
+    if (!session) {
+      return {
+        success: false,
+        error: "Session not found",
+        message: "Cannot save contact information without session data"
+      };
+    }
+
+    // Update session with contact information
+    const updateData: any = {
+      phone: phoneNumber || session.phone,
+      email: email || session.email,
+      preferNoContact
+    };
+
+    // If user prefers no contact, clear existing contact info
+    if (preferNoContact) {
+      updateData.phone = "";
+      updateData.email = "";
+    }
+
+    await prisma.conversationSession.update({
+      where: { sessionId },
+      data: updateData
+    });
+
+    let message = "Contact information saved successfully.";
+    if (preferNoContact) {
+      message = "I understand you prefer not to provide contact information. Your complaint will still be processed and you can check its status using the tracking number.";
+    } else if (phoneNumber && !email) {
+      message = `Phone number saved: ${phoneNumber}. Email is optional - your complaint will still be processed without it.`;
+    } else if (phoneNumber && email) {
+      message = `Contact information saved: Phone ${phoneNumber}, Email ${email}`;
+    }
+
+    return {
+      success: true,
+      data: {
+        phoneNumber: updateData.phone,
+        email: updateData.email,
+        preferNoContact
+      },
+      message
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message,
+      message: "Failed to save contact information"
+    };
+  }
+}
+
 export async function createComplaintHandler(args: any, context: ToolContext): Promise<ToolResult> {
   try {
     const { sessionId, priority = ComplaintPriority.medium, isAnonymous = false } = args;
@@ -76,12 +168,12 @@ export async function createComplaintHandler(args: any, context: ToolContext): P
       };
     }
 
-    // Validate required fields
-    if (!session.fullName || !session.description || !session.ministry) {
+    // Validate required fields - only description and ministry are required
+    if (!session.description || !session.ministry) {
       return {
         success: false,
         error: "Missing required information",
-        message: "Please provide full name, description, and ministry before creating complaint"
+        message: "Please provide a description of your complaint and the ministry/department involved before submitting."
       };
     }
 
@@ -92,11 +184,11 @@ export async function createComplaintHandler(args: any, context: ToolContext): P
     const complaint = await prisma.complaint.create({
       data: {
         trackingNumber,
-        complainantName: isAnonymous ? "Anonymous" : session.fullName,
-        email: session.email || "",
-        phone: session.phone || "",
+        complainantName: isAnonymous ? "Anonymous" : (session.fullName || "Anonymous"),
+        email: session.preferNoContact ? "" : (session.email || ""),
+        phone: session.preferNoContact ? "" : (session.phone || ""),
         address: session.address,
-        isAnonymous,
+        isAnonymous: isAnonymous || !session.fullName || session.preferNoContact,
         ministry: session.ministry,
         category: session.category || "Other",
         subject: session.subject || "Complaint",
@@ -188,6 +280,7 @@ export async function updateComplaintDetailsHandler(args: any, context: ToolCont
 }
 
 export const complaintToolHandlers = {
+  extract_contact_info: extractContactInfoHandler,
   create_complaint: createComplaintHandler,
   update_complaint_details: updateComplaintDetailsHandler,
 };

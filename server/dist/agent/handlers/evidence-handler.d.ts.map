@@ -1,0 +1,1 @@
+{"version":3,"file":"evidence-handler.d.ts","sourceRoot":"","sources":["../../../src/agent/handlers/evidence-handler.ts"],"names":[],"mappings":"AAEA,OAAO,EAAE,eAAe,EAAE,MAAM,oBAAoB,CAAC;AAErD,qBAAa,eAAe;IACpB,MAAM,CAAC,SAAS,EAAE,MAAM,EAAE,WAAW,EAAE,MAAM,GAAG,OAAO,CAAC,eAAe,CAAC;CAgD/E"}

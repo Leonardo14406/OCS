@@ -1,0 +1,1 @@
+{"version":3,"file":"identity-handler.d.ts","sourceRoot":"","sources":["../../../src/agent/handlers/identity-handler.ts"],"names":[],"mappings":"AAGA,OAAO,EAAE,eAAe,EAAE,MAAM,oBAAoB,CAAC;AAErD,qBAAa,eAAe;IAC1B,OAAO,CAAC,aAAa,CAAgB;;IAM/B,MAAM,CAAC,SAAS,EAAE,MAAM,EAAE,WAAW,EAAE,MAAM,GAAG,OAAO,CAAC,eAAe,CAAC;IA0E9E,OAAO,CAAC,YAAY;IAMpB,OAAO,CAAC,YAAY;IAmBpB,OAAO,CAAC,WAAW;CAuCpB"}

@@ -145,7 +145,7 @@ export default function ComplaintQueue() {
                   <SelectContent>
                     <SelectItem value="all">All Ministries</SelectItem>
                     {MOCK_MINISTRIES.map((ministry) => (
-                      <SelectItem key={ministry.id} value={ministry.name}>
+                      <SelectItem key={`${ministry.id}-${ministry.name}`} value={ministry.name}>
                         {ministry.name}
                       </SelectItem>
                     ))}

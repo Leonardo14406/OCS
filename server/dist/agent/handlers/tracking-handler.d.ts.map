@@ -1,0 +1,1 @@
+{"version":3,"file":"tracking-handler.d.ts","sourceRoot":"","sources":["../../../src/agent/handlers/tracking-handler.ts"],"names":[],"mappings":"AAEA,OAAO,EAAE,eAAe,EAAE,MAAM,oBAAoB,CAAC;AAGrD,qBAAa,eAAe;IAC1B,OAAO,CAAC,eAAe,CAAkB;;IAKnC,MAAM,CAAC,SAAS,EAAE,MAAM,EAAE,WAAW,EAAE,MAAM,GAAG,OAAO,CAAC,eAAe,CAAC;IAsE9E,OAAO,CAAC,qBAAqB;CAK9B"}

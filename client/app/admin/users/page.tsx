@@ -254,8 +254,8 @@ export default function UserManagementPage() {
                             <SelectValue placeholder="Select ministry" />
                           </SelectTrigger>
                           <SelectContent>
-                            {MOCK_MINISTRIES.map((ministry) => (
-                              <SelectItem key={ministry.id} value={ministry.name}>
+                            {ministries.map((ministry) => (
+                              <SelectItem key={`${ministry.id}-${ministry.name}`} value={ministry.name}>
                                 {ministry.name}
                               </SelectItem>
                             ))}
