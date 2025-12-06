@@ -314,7 +314,7 @@ async function initializeClient(retryCount = 0, maxRetries = 3) {
       
       const chat = await message.getChat().catch(() => null);
       const isGroup = chat?.isGroup === true;
-      const isPersonal = message.from.endsWith('@c.us');
+      const isPersonal = message.from.endsWith('@c.us') || message.from.endsWith('@lid');
       const isFromMe = message.fromMe === true;
       const isStatus = message.from === 'status@broadcast';
       const msgType = message.type || 'undefined';
@@ -803,9 +803,9 @@ app.post('/send-message', requireApiKey, async (req, res) => {
     console.error(`❌ ${process.env.BRAND_NAME || 'Server'}: Missing required fields in /send-message: ${JSON.stringify({ to, body })}`);
     return res.status(400).json({ error: 'Missing to or body', details: { to, body } });
   }
-  if (!to.endsWith('@c.us')) {
-    console.error(`❌ ${process.env.BRAND_NAME || 'Server'}: Invalid recipient for ${to}: must be personal chat (@c.us)`);
-    return res.status(400).json({ error: 'Invalid recipient', details: 'Recipient must be a personal chat (@c.us)' });
+  if (!to.endsWith('@c.us') && !to.endsWith('@lid')) {
+    console.error(`❌ ${process.env.BRAND_NAME || 'Server'}: Invalid recipient for ${to}: must be personal chat (@c.us or @lid)`);
+    return res.status(400).json({ error: 'Invalid recipient', details: 'Recipient must be a personal chat (@c.us or @lid)' });
   }
 
   const client = clients.get(process.env.CLIENT_PHONE_E164);
