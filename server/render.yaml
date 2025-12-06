@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: ombudsman-agent-server
+    runtime: docker
+    plan: starter
+    region: oregon
+    branch: main
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: KINDE_ISSUER_URL
+        sync: false
+      - key: KINDE_CLIENT_ID
+        sync: false
+      - key: KINDE_CLIENT_SECRET
+        sync: false
+      - key: KINDE_AUDIENCE
+        sync: false
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: SUPER_ADMIN_EMAIL
+        sync: false
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=2048
