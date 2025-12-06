@@ -24,13 +24,17 @@ async function requireSuperAdmin() {
 }
 
 // DELETE: remove a ministry by id
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireSuperAdmin()
   if (auth.error) {
     return NextResponse.json(auth.error.body, { status: auth.error.status })
   }
 
-  const id = params.id
+  const { id } = await params
+
+  if (!id) {
+    return NextResponse.json({ error: "Ministry ID is required" }, { status: 400 })
+  }
 
   try {
     await db.ministry.delete({ where: { id } })

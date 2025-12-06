@@ -25,26 +25,26 @@ export class GreetingHandler {
       throw new Error('Session not found');
     }
 
-    // Check if user is providing their name or wants to start
+    // More flexible conversation handling - let the AI guide naturally
     const lowerMessage = userMessage.toLowerCase();
     
-    // If user says they want to file a complaint, move to identity collection
+    // If user clearly wants to file a complaint, provide gentle guidance
     if (lowerMessage.includes('complaint') || lowerMessage.includes('report') || 
         lowerMessage.includes('file') || lowerMessage.includes('issue')) {
       return {
-        message: "Hello! I'm Leoma, your AI assistant for the Ombudsman office. I'll help you file your complaint. To get started, could you please tell me your full name?",
+        message: "I understand you'd like to file a complaint. I'm Leoma, and I'm here to help you through this process. Could you start by telling me what happened? Don't worry about getting all the details perfect at first - just share your story in your own words.",
         nextState: ConversationState.identity_collection,
         shouldUpdateSession: true,
         sessionData: { messageCount: session.messageCount + 1 }
       };
     }
 
-    // If user provides their name, detect gender and move to identity collection
+    // If user provides their name, respond naturally
     if (this.looksLikeName(userMessage)) {
       const genderResult = await this.openaiClient.detectGender(userMessage);
       
       return {
-        message: `Nice to meet you! I'm Leoma, your AI assistant for the Ombudsman office. I'll help you file your complaint. Could you please provide your email address and phone number?`,
+        message: `Thank you for sharing your name with me. I'm Leoma, your AI assistant from the Ombudsman office. I'm here to listen and help you with whatever you need. Could you tell me what brought you here today?`,
         nextState: ConversationState.identity_collection,
         shouldUpdateSession: true,
         sessionData: {
@@ -55,9 +55,9 @@ export class GreetingHandler {
       };
     }
 
-    // Default greeting response
+    // More conversational default greeting
     return {
-      message: "Hello! I'm Leoma, your AI assistant for the Ombudsman office. How can I help you today? You can tell me if you'd like to file a complaint, or ask me any questions about the process.",
+      message: "Hello! I'm Leoma, your AI assistant for the Ombudsman office of Sierra Leone. I'm here to help you with any concerns you might have about government services or officials. Feel free to share what's on your mind, and I'll guide you through the process step by step.",
       nextState: ConversationState.greeting,
       shouldUpdateSession: true,
       sessionData: { messageCount: session.messageCount + 1 }

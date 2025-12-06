@@ -387,7 +387,7 @@ router.post('/webhook/whatsapp', requireApiKey, async (req: Request, res) => {
       // Handle text-only messages or provide welcome
       let textMessage = message;
       if (!textMessage || !textMessage.trim()) {
-        textMessage = "Welcome! I'm Leoma, your AI ombudsman assistant. How can I help you today?";
+        textMessage = "Welcome! I'm Leoma, your AI assistant for the Ombudsman office of Sierra Leone. I'm here to help you file complaints against government officials, track existing complaints, and provide information about the complaint process. How can I help you today?";
       }
 
       // Prepare agent message using existing structure

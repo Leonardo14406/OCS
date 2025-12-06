@@ -123,8 +123,7 @@ export default function SettingsPage() {
   }
 
   const handleDeleteMinistry = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete ${name}?`)) return
-
+    // Remove immediately without confirmation dialog
     try {
       const res = await fetch(`/api/admin/ministries/${id}`, {
         method: "DELETE",
@@ -137,8 +136,8 @@ export default function SettingsPage() {
       setMinistries(ministries.filter((m) => m.id !== id))
 
       toast({
-        title: "Ministry Deleted",
-        description: `${name} has been removed`,
+        title: "Ministry deleted",
+        description: `${name} has been removed successfully.`,
       })
     } catch (error) {
       toast({

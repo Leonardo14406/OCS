@@ -7,6 +7,7 @@ import { EvidenceHandler } from './handlers/evidence-handler';
 import { SubmissionHandler } from './handlers/submission-handler';
 import { TrackingHandler } from './handlers/tracking-handler';
 import { GenderCorrectionHandler } from './handlers/gender-correction-handler';
+import { OmbudsmanAgent } from './ombudsman-agent';
 import { AgentMessage, AgentResponse, CAPABILITIES, OUT_OF_SCOPE_MESSAGE } from '../types/agent.types';
 import { HandlerResponse } from './handlers/greeting-handler';
 
@@ -32,6 +33,7 @@ export class ConversationManager {
   private submissionHandler: SubmissionHandler;
   private trackingHandler: TrackingHandler;
   private genderCorrectionHandler: GenderCorrectionHandler;
+  private ombudsmanAgent: OmbudsmanAgent;
 
   constructor() {
     this.greetingHandler = new GreetingHandler();
@@ -41,6 +43,10 @@ export class ConversationManager {
     this.submissionHandler = new SubmissionHandler();
     this.trackingHandler = new TrackingHandler();
     this.genderCorrectionHandler = new GenderCorrectionHandler();
+    this.ombudsmanAgent = new OmbudsmanAgent();
+    
+    // Initialize the agent
+    this.ombudsmanAgent.initialize();
   }
 
   async processMessage(request: AgentRequest): Promise<LegacyAgentResponse> {
@@ -182,41 +188,32 @@ export class ConversationManager {
     const { userId, message, media, sessionId } = agentMessage;
 
     try {
-      // Check if message is within allowed capabilities
-      if (!this.isWithinCapabilities(message)) {
-        return {
-          message: OUT_OF_SCOPE_MESSAGE,
-          sessionId: sessionId || '',
-          state: ConversationState.greeting,
-          shouldEndSession: false,
-          shouldAttachMedia: false
-        };
-      }
-
-      // Process the message normally
-      const request: AgentRequest = {
-        sessionId: sessionId || '',
+      // Use the new OmbudsmanAgent with tools
+      const locationContext = this.extractLocationContext(message);
+      const mediaContext = this.extractMediaContext(media);
+      
+      const agentResponse = await this.ombudsmanAgent.processMessage(
         message,
-        ipAddress: '', // Will be populated by middleware
-        userAgent: ''  // Will be populated by middleware
-      };
+        sessionId || '',
+        locationContext,
+        mediaContext
+      );
 
-      const response = await this.processMessage(request);
-
-      // Determine if media should be attached (only in evidence state)
-      const shouldAttachMedia = response.currentState === ConversationState.evidence_upload && media && media.length > 0;
+      // Get updated session data
+      const session = await prisma.conversationSession.findUnique({
+        where: { sessionId: sessionId || '' }
+      });
 
       return {
-        message: response.message,
-        sessionId: response.sessionId,
-        state: response.currentState,
-        shouldEndSession: response.isComplete,
-        shouldAttachMedia,
-        trackingNumber: response.currentState === ConversationState.completed ? await this.getTrackingNumber(sessionId || '') : undefined
+        message: agentResponse,
+        sessionId: sessionId || '',
+        state: session?.currentState || ConversationState.greeting,
+        shouldEndSession: session?.currentState === ConversationState.completed,
+        shouldAttachMedia: session?.currentState === ConversationState.evidence_upload && media && media.length > 0,
+        trackingNumber: session?.complaintId ? undefined : undefined // Will be generated when complaint is created
       };
-
-    } catch (error) {
-      console.error('Error processing message with media:', error);
+    } catch (error: any) {
+      console.error({ error, sessionId }, "Error processing message with OmbudsmanAgent");
       return {
         message: "I apologize, but I encountered an error processing your message. Please try again.",
         sessionId: sessionId || '',
@@ -225,6 +222,35 @@ export class ConversationManager {
         shouldAttachMedia: false
       };
     }
+  }
+
+  private extractLocationContext(message: string): any {
+    // Simple location extraction - can be enhanced
+    const locationRegex = /(?:at|in|near)\s+([^,.!?]+)/gi;
+    const matches = message.match(locationRegex);
+    
+    if (matches && matches.length > 0) {
+      return {
+        hasLocation: true,
+        locationDescription: matches[0].replace(/(?:at|in|near)\s+/i, '').trim()
+      };
+    }
+    
+    return { hasLocation: false };
+  }
+
+  private extractMediaContext(media?: any[]): any {
+    if (!media || media.length === 0) {
+      return { hasMedia: false };
+    }
+    
+    return {
+      hasMedia: true,
+      filename: media[0].name,
+      mimeType: media[0].mimeType,
+      size: media[0].size,
+      data: media[0].buffer ? media[0].buffer.toString('base64') : undefined
+    };
   }
 
   private async getOrCreateSession(

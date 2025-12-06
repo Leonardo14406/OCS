@@ -84,7 +84,7 @@ const MAX_LOG = 200;
 
 // Session monitoring
 const sessionHealthChecks = new Map();
-const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+const HEALTH_CHECK_INTERVAL = 30000; // 30 secondsAdd
 const SESSION_TIMEOUT = 300000; // 5 minutes without activity before considering unhealthy
 
 // Message queue helper functions
@@ -278,10 +278,24 @@ async function initializeClient(retryCount = 0, maxRetries = 3) {
     
     startHealthMonitoring(chatbotId, client);
     
-    // Removed Next.js API notification
-    io.emit(`connected:${chatbotId}`, { phoneNumber });
-    qrCodes.delete(chatbotId);
-    console.log(`Client connected and ready: ${phoneNumber}`);
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_ABSOLUTE_URL}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.AGENT_API_KEY
+        },
+        body: JSON.stringify({
+          chatbotId,
+          event: 'connected',
+          phoneNumber,
+        }),
+      });
+      io.emit(`connected:${chatbotId}`, { phoneNumber });
+      qrCodes.delete(chatbotId);
+    } catch (error) {
+      console.error(`Error notifying Next.js for ${chatbotId}:`, error.message, error.stack);
+    }
   });
 
   client.on('authenticated', () => {
@@ -307,7 +321,7 @@ async function initializeClient(retryCount = 0, maxRetries = 3) {
       const isNotification = message.type && (message.type.includes('notification') || message.type === 'e2e_notification');
       const hasBody = message.body && message.body.trim().length > 0;
       
-      console.log(`[message] from=${message.from}, isGroup=${isGroup}, isPersonal=${isPersonal}, isFromMe=${isFromMe}, type=${msgType}, hasMedia=${message.hasMedia}, body="${message.body}", msgId=${messageId}`);
+      console.log(`[message] from=${message.from}, isGroup=${isGroup}, isPersonal=${isPersonal}, isFromMe=${isFromMe}, type=${msgType}, hasMedia=${message.hasMedia}, hasLocation=${!!message.location}, body="${message.body}", msgId=${messageId}`);
 
       // Skip messages with undefined type and no media/body
       if (!message.type && !hasBody && !message.hasMedia) {
@@ -357,6 +371,11 @@ async function initializeClient(retryCount = 0, maxRetries = 3) {
             mediaType: mediaData.mimetype,
             mediaSize: mediaData.size,
             mediaFilename: mediaData.filename
+          }),
+          ...(message.location && {
+            hasLocation: true,
+            latitude: message.location.latitude,
+            longitude: message.location.longitude
           })
         });
         if (messagesLog.length > MAX_LOG) messagesLog.shift();
@@ -365,6 +384,17 @@ async function initializeClient(retryCount = 0, maxRetries = 3) {
       // Derive phoneE164 from JID if possible (e.g., "1234567890@c.us" -> "+1234567890")
       const jidLocal = (message.from || '').split('@')[0] || '';
       const phoneE164 = /^\d{6,15}$/.test(jidLocal) ? `+${jidLocal}` : undefined;
+
+      // Extract location data if message type is location
+      let locationData = null;
+      if (msgType === 'location' && message.location) {
+        locationData = {
+          latitude: message.location.latitude,
+          longitude: message.location.longitude,
+          description: message.location.description || message.body || ''
+        };
+        console.log(`[message] Location shared: lat=${locationData.latitude}, lng=${locationData.longitude}, description="${locationData.description}"`);
+      }
 
       // Prepare webhook payload
       const webhookPayload = {
@@ -376,47 +406,66 @@ async function initializeClient(retryCount = 0, maxRetries = 3) {
         phoneE164,
         messageType: msgType,
         hasMedia: message.hasMedia || false,
-        ...(mediaData && { media: mediaData })
+        ...(mediaData && { media: mediaData }),
+        ...(locationData && { location: locationData })
       };
 
-      console.log(`[message] Webhook payload prepared: hasMedia=${webhookPayload.hasMedia}, messageType=${webhookPayload.messageType}${mediaData ? `, mediaType=${mediaData.mimetype}` : ''}`);
+      console.log(`[message] Webhook payload prepared: hasMedia=${webhookPayload.hasMedia}, messageType=${webhookPayload.messageType}${mediaData ? `, mediaType=${mediaData.mimetype}` : ''}${locationData ? `, hasLocation=true` : ''}`);
 
-      // Call GeneLine API for incoming message processing
-      const genelineApiUrl = 'https://message.geneline-x.net/api/v1/message';
-
-
-      const genelineApiKey = 'cab7c8604df943eca0cac29cfa2ba87607d244b6807618c5e6f9f66baae0ae97';
-      const genelineChatbotId = 'cmig1u2oo0001la041zxsnpve';
-      
-      const genelinePayload = {
-        chatbotId: genelineChatbotId,
-        email: webhookPayload.email,
-        message: message.body || ''
-      };
-
-      console.log(`[message] Sending to GeneLine API:`, JSON.stringify(genelinePayload));
-      
-      const response = await fetch(genelineApiUrl, {
+      // Call Next.js API for incoming message processing using env base URL
+      const apiBase = (process.env.NEXT_PUBLIC_ABSOLUTE_URL || 'http://localhost:3001').replace(/\/+$/, '');
+      const response = await fetch(`${apiBase}`, {
         method: 'POST',
         headers: { 
-          'accept': 'text/plain',
-          'X-API-Key': genelineApiKey,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.AGENT_API_KEY
         },
-        body: JSON.stringify(genelinePayload),
+        body: JSON.stringify(webhookPayload),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[message] GeneLine API error: ${response.status} - ${errorText}`);
-        throw new Error(`Failed to fetch response from GeneLine API: ${response.status} - ${errorText}`);
+        console.error(`[message] API error: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to fetch response from local API: ${response.status} - ${errorText}`);
       }
 
-      // GeneLine API returns plain text stream, not JSON
-      const text = await response.text();
-
-      // TODO:  format to suit WhatsApp better (line breaks, etc.)
-      console.log(`[message] GeneLine API response (${text.length} chars): ${text.substring(0, 500)}`);
+      let data;
+      const responseText = await response.text();
+      console.log(`[message] Raw API response (${responseText.length} chars): ${responseText.substring(0, 500)}`);
+      
+      try {
+        data = JSON.parse(responseText);
+        console.log(`[message] Parsed API response:`, JSON.stringify(data).substring(0, 500));
+      } catch (parseError) {
+        console.error(`[message] Failed to parse API response as JSON:`, parseError.message);
+        data = {};
+      }
+      
+      // Handle different possible response formats
+      let text = '';
+      if (data && typeof data === 'object') {
+        if (data.answer) {
+          text = String(data.answer);
+        } else if (data.message) {
+          text = String(data.message);
+        } else if (data.response) {
+          text = String(data.response);
+        } else if (data.reply) {
+          text = String(data.reply);
+        } else if (data.text) {
+          text = String(data.text);
+        } else {
+          console.warn(`[message] API response does not contain expected fields. Keys present:`, Object.keys(data));
+        }
+      } else if (typeof data === 'string') {
+        text = data;
+      }
+      
+      console.log(`[message] Extracted text (${text.length} chars): ${text.substring(0, 200)}`);
+      
+      if (!text || !text.trim()) {
+        console.warn(`[message] Empty or whitespace-only response from API. Full data:`, JSON.stringify(data));
+      }
 
       if (text.trim()) {
         try {
@@ -478,10 +527,19 @@ async function initializeClient(retryCount = 0, maxRetries = 3) {
     // Stop health monitoring
     stopHealthMonitoring(chatbotId);
     
-    // Removed Next.js API notification
-    console.log(`Client disconnected, starting reconnection logic`);
-    
     try {
+      await fetch(`${process.env.NEXT_PUBLIC_ABSOLUTE_URL}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.AGENT_API_KEY
+        },
+        body: JSON.stringify({
+          chatbotId,
+          event: 'disconnected',
+        }),
+      });
+      
       // Enhanced reconnection logic with exponential backoff
       console.log(`Attempting to reconnect client for ${chatbotId}...`);
       let reconnectAttempts = 0;
@@ -941,7 +999,22 @@ app.post('/logout', requireApiKey, async (req, res) => {
     qrCodes.delete(chatbotId);
     console.log(`✅ ${process.env.BRAND_NAME || 'Server'}: Client removed from memory`);
     
-    // Removed Next.js API notification
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_ABSOLUTE_URL}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.AGENT_API_KEY
+        },
+        body: JSON.stringify({
+          chatbotId,
+          event: 'logged_out',
+        }),
+      });
+    } catch (webhookError) {
+      console.warn(`⚠️ ${process.env.BRAND_NAME || 'Server'}: Error notifying webhook:`, webhookError.message);
+    }
+    
     console.log(`🔓 ${process.env.BRAND_NAME || 'Server'}: Logout complete. Ready for new session initialization.`);
     res.status(200).json({ 
       status: 'logged_out', 

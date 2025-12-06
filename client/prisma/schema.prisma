@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,9 +5,247 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
-/// Enums derived from TypeScript union types in `lib/types.ts`
+
+/// Core user of the citizen-facing portal
+model Account {
+  id                 String              @id @default(cuid())
+  role               UserRole
+  fullName           String
+  email              String              @unique
+  phone              String?
+  avatar             String?
+  address            String?
+  city               String?
+  state              String?
+  postalCode         String?
+  employeeId         String?             @unique
+  department         String?
+  officerRole        OfficerRole?
+  adminRole          AdminRole?
+  complaintsCount    Int                 @default(0)
+  assignedComplaints Int                 @default(0)
+  resolvedComplaints Int                 @default(0)
+  kindeUserId        String?             @unique
+  kindePermissions   String[]
+  isActive           Boolean             @default(true)
+  preferredLanguage  String              @default("en")
+  createdAt          DateTime            @default(now())
+  lastLoginAt        DateTime?
+  assignedCases      Complaint[]         @relation("ComplaintAssignedOfficer")
+  filedComplaints    Complaint[]         @relation("ComplaintComplainant")
+  notes              InvestigationNote[] @relation("AccountInvestigationNotes")
+
+  @@index([role])
+  @@index([email])
+  @@index([kindeUserId])
+  @@map("accounts")
+}
+
+/// A complaint filed by a citizen
+model Complaint {
+  id                String                   @id @default(cuid())
+  trackingNumber    String                   @unique @default(cuid())
+  complainantName   String
+  email             String
+  phone             String
+  address           String?
+  isAnonymous       Boolean                  @default(false)
+  ministry          String
+  category          String
+  subject           String
+  description       String
+  incidentDate      DateTime?
+  status            ComplaintStatus          @default(submitted)
+  priority          ComplaintPriority        @default(medium)
+  submittedAt       DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  complainantId     String?
+  assignedOfficerId String?
+  tags              String[]
+  deletedAt         DateTime?
+  statusHistory     ComplaintStatusHistory[]
+  summary           ComplaintSummary?
+  assignedOfficer   Account?                 @relation("ComplaintAssignedOfficer", fields: [assignedOfficerId], references: [id])
+  complainant       Account?                 @relation("ComplaintComplainant", fields: [complainantId], references: [id])
+  evidence          EvidenceItem[]
+  notes             InvestigationNote[]
+
+  @@index([trackingNumber])
+  @@index([status])
+  @@index([priority])
+  @@index([complainantId])
+  @@index([assignedOfficerId])
+  @@index([submittedAt])
+  @@index([deletedAt])
+  @@map("complaints")
+}
+
+/// Evidence items attached to a complaint
+model EvidenceItem {
+  id          String    @id @default(cuid())
+  fileName    String
+  fileSize    Int
+  fileType    String
+  uploadedAt  DateTime  @default(now())
+  url         String?
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@map("evidence_items")
+}
+
+/// History of status changes for a complaint
+model ComplaintStatusHistory {
+  id          String          @id @default(cuid())
+  status      ComplaintStatus
+  timestamp   DateTime        @default(now())
+  note        String
+  updatedBy   String?
+  complaintId String
+  complaint   Complaint       @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@map("complaint_status_history")
+}
+
+/// Ministries / departments complaints can be associated with
+model Ministry {
+  id          String                        @id @default(cuid())
+  name        String
+  code        String                        @unique
+  description String
+  categories  ComplaintCategoryOnMinistry[]
+
+  @@map("ministries")
+}
+
+/// High-level categories of complaints
+model ComplaintCategory {
+  id          String                        @id @default(cuid())
+  name        String
+  description String
+  ministries  ComplaintCategoryOnMinistry[]
+
+  @@map("complaint_categories")
+}
+
+/// Join table for many-to-many between ComplaintCategory and Ministry
+model ComplaintCategoryOnMinistry {
+  categoryId String
+  ministryId String
+  category   ComplaintCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  ministry   Ministry          @relation(fields: [ministryId], references: [id], onDelete: Cascade)
+
+  @@id([categoryId, ministryId])
+  @@map("complaint_categories_ministries")
+}
+
+/// Notes added during investigation of a complaint
+model InvestigationNote {
+  id          String    @id @default(cuid())
+  note        String
+  isInternal  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  attachments String[]
+  complaintId String
+  officerId   String?
+  officerName String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  officer     Account?  @relation("AccountInvestigationNotes", fields: [officerId], references: [id])
+
+  @@map("investigation_notes")
+}
+
+/// AI-generated summary and recommendations for a complaint
+model ComplaintSummary {
+  id                 String    @id @default(cuid())
+  aiGeneratedSummary String
+  keyPoints          String[]
+  suggestedActions   String[]
+  similarComplaints  String[]
+  riskLevel          RiskLevel
+  generatedAt        DateTime  @default(now())
+  complaintId        String    @unique
+  complaint          Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@map("complaint_summaries")
+}
+
+/// System-wide pattern insights for oversight/analytics
+model PatternInsight {
+  id                String   @id @default(cuid())
+  title             String
+  description       String
+  affectedMinistry  String
+  complaintCount    Int
+  trend             Trend
+  severity          Severity
+  detectedAt        DateTime @default(now())
+  relatedComplaints String[]
+  recommendations   String[]
+
+  @@map("pattern_insights")
+}
+
+/// Geographic / ministry-level corruption hotspot analytics
+model CorruptionHotspot {
+  id             String    @id @default(cuid())
+  ministry       String
+  region         String
+  score          Int
+  complaintCount Int
+  trend          Trend
+  riskLevel      RiskLevel
+  lastUpdated    DateTime  @default(now())
+
+  @@map("corruption_hotspots")
+}
+
+/// AI suggestion logging for auditing purposes
+model AILog {
+  id                  String   @id @default(cuid())
+  userId              String
+  originalDescription String
+  suggestedCategory   String
+  suggestedMinistry   String
+  suggestions         String[]
+  improvedDescription String
+  createdAt           DateTime @default(now())
+
+  @@map("ai_logs")
+}
+
+model conversation_sessions {
+  id                     String            @id
+  sessionId              String            @unique
+  currentState           ConversationState @default(greeting)
+  userId                 String?
+  ipAddress              String?
+  userAgent              String?
+  fullName               String?
+  gender                 Gender?
+  email                  String?
+  phone                  String?
+  address                String?
+  ministry               String?
+  category               String?
+  subject                String?
+  description            String?
+  incidentDate           DateTime?
+  detectedGender         Gender?
+  classifiedMinistry     String?
+  classifiedCategory     String?
+  paraphrasedDescription String?
+  lastMessageAt          DateTime          @default(now())
+  messageCount           Int               @default(0)
+  completedAt            DateTime?
+  errorReason            String?
+  complaintId            String?
+
+  @@index([currentState])
+  @@index([lastMessageAt])
+  @@index([sessionId])
+}
 
 enum ComplaintStatus {
   submitted
@@ -68,231 +300,21 @@ enum UserRole {
   admin
 }
 
-/// Core user of the citizen-facing portal
-model Account {
-  id                   String    @id @default(cuid())
-  role                 UserRole
-  fullName             String
-  email                String    @unique
-  phone                String?
-  avatar               String?
-  address              String?
-  city                 String?
-  state                String?
-  postalCode           String?
-  employeeId           String?   @unique
-  department           String?
-  officerRole          OfficerRole?
-  adminRole            AdminRole?
-  complaintsCount      Int       @default(0)
-  assignedComplaints   Int       @default(0)
-  resolvedComplaints   Int       @default(0)
-  kindeUserId          String?   @unique
-  kindePermissions     String[]
-  isActive             Boolean   @default(true)
-  preferredLanguage    String    @default("en")
-  createdAt            DateTime  @default(now())
-  lastLoginAt          DateTime?
-
-  filedComplaints      Complaint[] @relation("ComplaintComplainant")
-  assignedCases        Complaint[] @relation("ComplaintAssignedOfficer")
-  notes                InvestigationNote[] @relation("AccountInvestigationNotes")
-
-  @@map("accounts")
-  @@index([role])
-  @@index([email])
-  @@index([kindeUserId])
+enum ConversationState {
+  greeting
+  identity_collection
+  complaint_collection
+  evidence_upload
+  classification
+  submission
+  tracking
+  completed
+  error
 }
 
-/// A complaint filed by a citizen
-model Complaint {
-  id                  String    @id @default(cuid())
-  trackingNumber      String    @unique @default(cuid())
-  
-  // Personal info
-  complainantName     String
-  email               String
-  phone               String
-  address             String?
-  isAnonymous         Boolean   @default(false)
-  
-  // Details
-  ministry            String
-  category            String
-  subject             String
-  description         String
-  incidentDate        DateTime?
-  
-  // Status & priority
-  status              ComplaintStatus    @default(submitted)
-  priority            ComplaintPriority @default(medium)
-  submittedAt         DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  
-  // Relations
-  complainant         Account?  @relation("ComplaintComplainant", fields: [complainantId], references: [id], onDelete: SetNull)
-  complainantId       String?
-  assignedOfficer     Account?  @relation("ComplaintAssignedOfficer", fields: [assignedOfficerId], references: [id], onDelete: SetNull)
-  assignedOfficerId   String?
-  
-  evidence            EvidenceItem[]
-  statusHistory       ComplaintStatusHistory[]
-  notes               InvestigationNote[]
-  summary             ComplaintSummary?
-  
-  tags                String[]
-  deletedAt           DateTime?
-
-  @@map("complaints")
-  @@index([trackingNumber])
-  @@index([status])
-  @@index([priority])
-  @@index([complainantId])
-  @@index([assignedOfficerId])
-  @@index([submittedAt])
-  @@index([deletedAt])
+enum Gender {
+  male
+  female
+  other
+  prefer_not_to_say
 }
-
-/// Evidence items attached to a complaint
-model EvidenceItem {
-  id         String   @id @default(cuid())
-  fileName   String
-  fileSize   Int
-  fileType   String
-  uploadedAt DateTime @default(now())
-  url        String?
-
-  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
-  complaintId String
-
-  @@map("evidence_items")
-}
-
-/// History of status changes for a complaint
-model ComplaintStatusHistory {
-  id         String          @id @default(cuid())
-  status     ComplaintStatus
-  timestamp  DateTime        @default(now())
-  note       String
-  updatedBy  String?
-
-  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
-  complaintId String
-
-  @@map("complaint_status_history")
-}
-
-/// Ministries / departments complaints can be associated with
-model Ministry {
-  id          String               @id @default(cuid())
-  name        String
-  code        String               @unique
-  description String
-
-  categories  ComplaintCategoryOnMinistry[]
-
-  @@map("ministries")
-}
-
-/// High-level categories of complaints
-model ComplaintCategory {
-  id          String                     @id @default(cuid())
-  name        String
-  description String
-
-  ministries  ComplaintCategoryOnMinistry[]
-
-  @@map("complaint_categories")
-}
-
-/// Join table for many-to-many between ComplaintCategory and Ministry
-model ComplaintCategoryOnMinistry {
-  category   ComplaintCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  categoryId String
-
-  ministry   Ministry          @relation(fields: [ministryId], references: [id], onDelete: Cascade)
-  ministryId String
-
-  @@id([categoryId, ministryId])
-  @@map("complaint_categories_ministries")
-}
-
-/// Notes added during investigation of a complaint
-model InvestigationNote {
-  id          String   @id @default(cuid())
-  note        String
-  isInternal  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  attachments String[]
-
-  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
-  complaintId String
-
-  officer     Account?  @relation("AccountInvestigationNotes", fields: [officerId], references: [id], onDelete: SetNull)
-  officerId   String?
-
-  officerName String
-
-  @@map("investigation_notes")
-}
-
-/// AI-generated summary and recommendations for a complaint
-model ComplaintSummary {
-  id                String      @id @default(cuid())
-  aiGeneratedSummary String
-  keyPoints          String[]
-  suggestedActions   String[]
-  similarComplaints  String[]
-  riskLevel          RiskLevel
-  generatedAt        DateTime   @default(now())
-
-  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
-  complaintId String    @unique
-
-  @@map("complaint_summaries")
-}
-
-/// System-wide pattern insights for oversight/analytics
-model PatternInsight {
-  id                 String    @id @default(cuid())
-  title              String
-  description        String
-  affectedMinistry   String
-  complaintCount     Int
-  trend              Trend
-  severity           Severity
-  detectedAt         DateTime  @default(now())
-  relatedComplaints  String[]
-  recommendations    String[]
-
-  @@map("pattern_insights")
-}
-
-/// Geographic / ministry-level corruption hotspot analytics
-model CorruptionHotspot {
-  id             String    @id @default(cuid())
-  ministry       String
-  region         String
-  score          Int
-  complaintCount Int
-  trend          Trend
-  riskLevel      RiskLevel
-  lastUpdated    DateTime  @default(now())
-
-  @@map("corruption_hotspots")
-}
-
-/// AI suggestion logging for auditing purposes
-model AILog {
-  id                  String    @id @default(cuid())
-  userId              String
-  originalDescription String
-  suggestedCategory   String
-  suggestedMinistry   String
-  suggestions         String[]
-  improvedDescription String
-  createdAt           DateTime  @default(now())
-
-  @@map("ai_logs")
-}
-
