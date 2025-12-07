@@ -13,13 +13,14 @@ interface MulterRequest extends Request {
   files?: any[]; // Using any for now until multer is properly installed
 }
 
-// Generate a new session ID
+// Session management endpoint (kept for WebSocket client initialization)
 router.post('/session', (req, res) => {
   try {
     const sessionId = randomBytes(16).toString('hex');
     res.json({ 
       sessionId,
-      message: 'New session created. You can now start sending messages to Leoma.',
+      message: 'New session created. Connect via WebSocket to start chatting with Leoma.',
+      websocketUrl: `ws://localhost:${process.env.PORT || 3000}`,
       agent: 'Leoma'
     });
   } catch (error) {
@@ -30,133 +31,8 @@ router.post('/session', (req, res) => {
   }
 });
 
-// Single message endpoint with media support (simplified without multer for now)
-router.post('/message', async (req: Request, res) => {
-  try {
-    const { userId, message, sessionId } = req.body;
-
-    // Validate required fields
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      res.status(400).json({
-        error: 'Message is required and must be a non-empty string'
-      });
-      return;
-    }
-
-    // Process uploaded files (placeholder - multer integration needed)
-    let mediaFiles: MediaFile[] = [];
-    // TODO: Add multer middleware for actual file uploads
-    if ((req as any).files && Array.isArray((req as any).files)) {
-      mediaFiles = (req as any).files.map((file: any) => ({
-        name: file.originalname,
-        type: file.mimetype,
-        size: file.size,
-        buffer: file.buffer,
-        mimeType: file.mimetype
-      }));
-    }
-
-    // Validate media files
-    if (mediaFiles.length > 0) {
-      for (const file of mediaFiles) {
-        const validation = mediaService.validateFile(file);
-        if (!validation.isValid) {
-          res.status(400).json({
-            error: `Invalid file ${file.name}: ${validation.error}`
-          });
-          return;
-        }
-      }
-    }
-
-    // Prepare agent message
-    const agentMessage: AgentMessage = {
-      userId,
-      message: message.trim(),
-      media: mediaFiles,
-      sessionId
-    };
-
-    // Process message through conversation manager
-    const response = await conversationManager.processMessageWithMedia(agentMessage);
-
-    // Process media if any and attach to session
-    let evidenceUploaded = false;
-    if (mediaFiles.length > 0 && response.shouldAttachMedia) {
-      try {
-        const processedMedia = await mediaService.processBatchFiles(mediaFiles);
-        await mediaService.attachMediaToSession(response.sessionId, processedMedia);
-        evidenceUploaded = true;
-      } catch (error) {
-        console.error('Error processing media:', error);
-        // Continue with message processing even if media fails
-      }
-    }
-
-    const agentResponse: AgentResponse = {
-      message: response.message,
-      sessionId: response.sessionId,
-      state: response.state,
-      shouldEndSession: response.shouldEndSession,
-      trackingNumber: response.trackingNumber,
-      evidenceUploaded
-    };
-
-    res.json(agentResponse);
-
-  } catch (error) {
-    console.error('Agent message error:', error);
-    res.status(500).json({
-      error: 'Failed to process message',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
-
-// Legacy chat endpoint (deprecated - use /message instead)
-router.post('/chat', async (req, res) => {
-  try {
-    const { sessionId, message } = req.body;
-
-    if (!sessionId || !message) {
-      res.status(400).json({
-        error: 'Missing required fields: sessionId and message are required'
-      });
-      return;
-    }
-
-    if (typeof message !== 'string' || message.trim().length === 0) {
-      res.status(400).json({
-        error: 'Message must be a non-empty string'
-      });
-      return;
-    }
-
-    const agentRequest: AgentRequest = {
-      sessionId,
-      message: message.trim(),
-      ipAddress: req.ip,
-      userAgent: req.get('User-Agent')
-    };
-
-    const response = await conversationManager.processMessage(agentRequest);
-
-    res.json({
-      sessionId: response.sessionId,
-      message: response.message,
-      currentState: response.currentState,
-      isComplete: response.isComplete,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('Agent chat error:', error);
-    res.status(500).json({
-      error: 'Failed to process message',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+// NOTE: Chat and message endpoints removed - use WebSocket instead
+// See README.md for WebSocket integration instructions
 
 // Get session status
 router.get('/session/:sessionId/status', async (req, res) => {
