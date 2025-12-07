@@ -271,10 +271,24 @@ router.post('/webhook/whatsapp', requireApiKey, async (req: Request, res) => {
         userId: phone, // Use phone as userId for WhatsApp
         message: textMessage.trim(),
         media: mediaFiles,
-        sessionId
+        sessionId,
+        locationContext: locationContext ? {
+          hasLocation: true,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          locationDescription: locationContext.locationDescription
+        } : undefined
       };
 
       // Process message through existing conversation manager
+      console.log({
+        phone,
+        sessionId,
+        messageLength: textMessage.length,
+        hasMedia: mediaFiles.length > 0,
+        messageType
+      }, "Processing message through conversation manager");
+
       const response = await conversationManager.processMessageWithMedia(agentMessage);
 
       // Process media if any and attach to session
@@ -284,8 +298,13 @@ router.post('/webhook/whatsapp', requireApiKey, async (req: Request, res) => {
           const processedMedia = await mediaService.processBatchFiles(mediaFiles);
           await mediaService.attachMediaToSession(response.sessionId, processedMedia);
           evidenceUploaded = true;
-        } catch (error) {
-          console.error('Error processing media:', error);
+          console.log({ sessionId: response.sessionId, mediaCount: processedMedia.length }, "Media attached to session");
+        } catch (error: any) {
+          console.error({
+            error: error.message,
+            stack: error.stack,
+            sessionId: response.sessionId
+          }, 'Error processing media');
           // Continue with message processing even if media fails
         }
       }
@@ -304,7 +323,7 @@ router.post('/webhook/whatsapp', requireApiKey, async (req: Request, res) => {
         sessionId: response.sessionId,
         trackingNumber: response.trackingNumber,
         messageLength: response.message.length,
-        agentResponse: response.message,
+        agentResponse: response.message.substring(0, 100),
         evidenceUploaded,
         state: response.state
       }, "Agent response sent");
@@ -321,7 +340,14 @@ router.post('/webhook/whatsapp', requireApiKey, async (req: Request, res) => {
 
     res.json({ status: "unknown_event" });
   } catch (error: any) {
-    console.error({ error }, "Error processing WhatsApp webhook");
+    const errorDetails = {
+      error: error.message,
+      stack: error.stack,
+      errorName: error.name,
+      errorCode: error.code,
+      body: req.body
+    };
+    console.error(errorDetails, "Error processing WhatsApp webhook");
     res.status(500).json({
       answer: "Sorry, I encountered an error. Please try again.",
       status: "error",

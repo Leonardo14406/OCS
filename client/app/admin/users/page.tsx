@@ -31,17 +31,19 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { MOCK_MINISTRIES, MOCK_OFFICERS } from "@/lib/mock-data"
-import type { Officer, OfficerRole } from "@/lib/types"
-import { UserPlus, Trash2, Edit, Search, Slash } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import type { Officer, OfficerRole, Ministry } from "@/lib/types"
+import { UserPlus, Trash2, Edit, Search, Slash, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 type OfficerRow = Officer & { isActive?: boolean }
 
 export default function UserManagementPage() {
   const { toast } = useToast()
-  // Seed with mock data initially for instant UI, then hydrate from API.
-  const [officers, setOfficers] = useState<OfficerRow[]>(MOCK_OFFICERS.map((o) => ({ ...o, isActive: true })))
+  const [officers, setOfficers] = useState<OfficerRow[]>([])
+  const [ministries, setMinistries] = useState<Ministry[]>([])
+  const [isLoadingOfficers, setIsLoadingOfficers] = useState(true)
+  const [isLoadingMinistries, setIsLoadingMinistries] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isDeactivateDialogOpen, setIsDeactivateDialogOpen] = useState(false)
@@ -66,9 +68,12 @@ export default function UserManagementPage() {
 
   useEffect(() => {
     const loadAccounts = async () => {
+      setIsLoadingOfficers(true)
       try {
         const res = await fetch("/api/admin/accounts")
-        if (!res.ok) return
+        if (!res.ok) {
+          throw new Error("Failed to fetch accounts")
+        }
         const accounts = await res.json()
 
         const mapped: OfficerRow[] = accounts
@@ -88,12 +93,44 @@ export default function UserManagementPage() {
 
         setOfficers(mapped)
       } catch (error) {
-        // Silent fail; UI will still show mock data
+        console.error("Failed to load officers:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load officers. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoadingOfficers(false)
       }
     }
 
     loadAccounts()
-  }, [])
+  }, [toast])
+
+  useEffect(() => {
+    const loadMinistries = async () => {
+      setIsLoadingMinistries(true)
+      try {
+        const res = await fetch("/api/ministries")
+        if (!res.ok) {
+          throw new Error("Failed to fetch ministries")
+        }
+        const data = await res.json()
+        setMinistries(data)
+      } catch (error) {
+        console.error("Failed to load ministries:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load ministries. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoadingMinistries(false)
+      }
+    }
+
+    loadMinistries()
+  }, [toast])
 
   const handleCreateOfficer = async () => {
     if (!newOfficer.fullName || !newOfficer.email || !newOfficer.department) {
@@ -195,7 +232,16 @@ export default function UserManagementPage() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <CardTitle>Officers</CardTitle>
-                <CardDescription>{officers.length} total officers in the system</CardDescription>
+                <CardDescription>
+                  {isLoadingOfficers ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Loading officers...
+                    </span>
+                  ) : (
+                    `${officers.length} total officers in the system`
+                  )}
+                </CardDescription>
               </div>
 
               <div className="flex gap-3">
@@ -246,21 +292,29 @@ export default function UserManagementPage() {
 
                       <div>
                         <Label htmlFor="department">Ministry *</Label>
-                        <Select
-                          value={newOfficer.department}
-                          onValueChange={(value) => setNewOfficer({ ...newOfficer, department: value })}
-                        >
-                          <SelectTrigger id="department">
-                            <SelectValue placeholder="Select ministry" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ministries.map((ministry) => (
-                              <SelectItem key={`${ministry.id}-${ministry.name}`} value={ministry.name}>
-                                {ministry.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        {isLoadingMinistries ? (
+                          <Skeleton className="h-10 w-full" />
+                        ) : (
+                          <Select
+                            value={newOfficer.department}
+                            onValueChange={(value) => setNewOfficer({ ...newOfficer, department: value })}
+                          >
+                            <SelectTrigger id="department">
+                              <SelectValue placeholder="Select ministry" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ministries.length === 0 ? (
+                                <div className="px-2 py-1.5 text-sm text-muted-foreground">No ministries available</div>
+                              ) : (
+                                ministries.map((ministry) => (
+                                  <SelectItem key={`${ministry.id}-${ministry.name}`} value={ministry.name}>
+                                    {ministry.name}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
 
                       <div>
@@ -307,48 +361,94 @@ export default function UserManagementPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOfficers.map((officer) => (
-                  <TableRow key={officer.id} className={!officer.isActive ? "opacity-60" : ""}>
-                    <TableCell className="font-medium flex items-center gap-2">
-                      {officer.fullName}
-                      {!officer.isActive && (
-                        <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                          Inactive
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>{officer.email}</TableCell>
-                    <TableCell>{officer.employeeId}</TableCell>
-                    <TableCell>{officer.department}</TableCell>
-                    <TableCell>
-                      <Badge variant={getRoleBadgeVariant(officer.role)}>{officer.role.replace("_", " ")}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">{officer.assignedComplaints}</TableCell>
-                    <TableCell className="text-right">{officer.resolvedComplaints}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" title="Edit">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title={officer.isActive === false ? "Already inactive" : "Deactivate"}
-                          disabled={officer.isActive === false}
-                          onClick={() => handleDeactivateOfficer(officer)}
-                        >
-                          <Slash className="h-4 w-4 text-red-600" />
-                        </Button>
+                {isLoadingOfficers ? (
+                  // Loading skeleton rows
+                  Array.from({ length: 5 }).map((_, index) => (
+                    <TableRow key={`skeleton-${index}`} className="animate-pulse">
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-4 w-16" />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-48" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-36" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-5 w-20 rounded-full" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-8 ml-auto" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-8 ml-auto" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Skeleton className="h-8 w-8 rounded-md" />
+                          <Skeleton className="h-8 w-8 rounded-md" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : filteredOfficers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-12">
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <UserPlus className="h-8 w-8 opacity-50" />
+                        <p className="text-sm font-medium">No officers found</p>
+                        <p className="text-xs">
+                          {searchQuery ? "Try adjusting your search query" : "Get started by adding your first officer"}
+                        </p>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredOfficers.map((officer) => (
+                    <TableRow key={officer.id} className={!officer.isActive ? "opacity-60" : ""}>
+                      <TableCell className="font-medium flex items-center gap-2">
+                        {officer.fullName}
+                        {!officer.isActive && (
+                          <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                            Inactive
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>{officer.email}</TableCell>
+                      <TableCell>{officer.employeeId}</TableCell>
+                      <TableCell>{officer.department}</TableCell>
+                      <TableCell>
+                        <Badge variant={getRoleBadgeVariant(officer.role)}>{officer.role.replace("_", " ")}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{officer.assignedComplaints}</TableCell>
+                      <TableCell className="text-right">{officer.resolvedComplaints}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="icon" title="Edit">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title={officer.isActive === false ? "Already inactive" : "Deactivate"}
+                            disabled={officer.isActive === false}
+                            onClick={() => handleDeactivateOfficer(officer)}
+                          >
+                            <Slash className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
-
-            {filteredOfficers.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">No officers found matching your search</div>
-            )}
           </CardContent>
         </Card>
         <Dialog open={isDeactivateDialogOpen} onOpenChange={setIsDeactivateDialogOpen}>

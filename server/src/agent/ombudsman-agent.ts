@@ -250,6 +250,16 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
     mediaContext?: MediaContext
   ): Promise<string> {
     try {
+      if (!sessionId || sessionId.trim() === '') {
+        logger.error({ sessionId, userMessage: userMessage?.substring(0, 50) }, "processMessage: sessionId is required");
+        return "I apologize, but I encountered an error. Please try again later.";
+      }
+
+      if (!userMessage || userMessage.trim() === '') {
+        logger.warn({ sessionId }, "processMessage: empty user message received");
+        userMessage = "Hello";
+      }
+
       logger.info(
         {
           userMessage: userMessage.substring(0, 100),
@@ -268,6 +278,10 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
 
       // Get current session state from database
       const sessionData = await this.getSessionData(sessionId);
+      
+      if (!sessionData) {
+        logger.warn({ sessionId }, "Session not found in database, will create during processing");
+      }
 
       // -----------------------------------------------------------
       // ENFORCE FIRST MESSAGE INTRODUCTION LOGIC
@@ -322,6 +336,14 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
         content: contextualMessage,
       });
 
+      // Validate OpenAI API key
+      if (!config.openai.apiKey || config.openai.apiKey.trim() === '') {
+        logger.error({ sessionId }, "OpenAI API key is not configured");
+        return "I apologize, but the AI service is not properly configured. Please contact support.";
+      }
+
+      logger.info({ sessionId, messageCount: messages.length, model: config.openai.model }, "Calling OpenAI API");
+      
       let completion = await this.openai.chat.completions.create({
         model: config.openai.model,
         messages: messages,
@@ -414,18 +436,46 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
       logger.warn({ sessionId, finishReason: completion.choices[0].finish_reason }, "No valid assistant response");
       return "Sorry, I encountered an issue processing your request. Please try again.";
     } catch (error: any) {
-      logger.error({ error: error.message, stack: error.stack, sessionId }, "Error processing message");
+      const errorDetails = {
+        error: error.message,
+        stack: error.stack,
+        sessionId,
+        errorName: error.name,
+        errorCode: error.code,
+        errorStatus: error.status,
+        errorResponse: error.response?.data || error.response || undefined
+      };
+      
+      logger.error(errorDetails, "Error processing message in OmbudsmanAgent");
+      
+      // Provide more specific error messages based on error type
+      if (error.status === 401 || error.message?.includes('API key')) {
+        return "I apologize, but there's an authentication issue with the AI service. Please contact support.";
+      } else if (error.status === 429 || error.message?.includes('rate limit')) {
+        return "I apologize, but the service is currently busy. Please try again in a moment.";
+      } else if (error.message?.includes('timeout') || error.code === 'ETIMEDOUT') {
+        return "I apologize, but the request timed out. Please try again.";
+      } else if (error.message?.includes('network') || error.code === 'ECONNREFUSED') {
+        return "I apologize, but there's a network issue. Please try again later.";
+      }
+      
       return "Sorry, I encountered an error. Please try again later.";
     }
   }
 
   private async getSessionData(sessionId: string): Promise<SessionContext | null> {
     try {
+      if (!sessionId || sessionId.trim() === '') {
+        logger.warn({ sessionId }, "getSessionData: empty sessionId provided");
+        return null;
+      }
+
       const session = await this.prisma.conversationSession.findUnique({
         where: { sessionId }
       });
 
       if (!session) {
+        logger.info({ sessionId }, "Session not found in database (this is OK for new sessions)");
         return null;
       }
 
@@ -445,8 +495,14 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
           gender: session.gender || undefined,
         }
       };
-    } catch (error) {
-      logger.error({ error, sessionId }, "Failed to get session data");
+    } catch (error: any) {
+      logger.error({ 
+        error: error.message, 
+        stack: error.stack,
+        sessionId,
+        errorCode: error.code,
+        errorName: error.name
+      }, "Failed to get session data from database");
       return null;
     }
   }

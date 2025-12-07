@@ -185,38 +185,114 @@ export class ConversationManager {
   }
 
   async processMessageWithMedia(agentMessage: AgentMessage): Promise<AgentResponse & { shouldAttachMedia?: boolean; trackingNumber?: string }> {
-    const { userId, message, media, sessionId } = agentMessage;
+    const { userId, message, media, sessionId, locationContext: providedLocationContext } = agentMessage;
+
+    if (!sessionId) {
+      console.error("processMessageWithMedia: sessionId is required but was not provided", { agentMessage });
+      return {
+        message: "I apologize, but I encountered an error processing your message. Please try again.",
+        sessionId: '',
+        state: ConversationState.error,
+        shouldEndSession: false,
+        shouldAttachMedia: false
+      };
+    }
 
     try {
+      // Ensure session exists in database before processing
+      let session = await prisma.conversationSession.findUnique({
+        where: { sessionId }
+      });
+
+      if (!session) {
+        console.log({ sessionId, userId }, "Creating new session in database");
+        session = await prisma.conversationSession.create({
+          data: {
+            sessionId,
+            userId: userId || null,
+            currentState: ConversationState.greeting,
+            lastMessageAt: new Date(),
+            messageCount: 0
+          }
+        });
+      }
+
       // Use the new OmbudsmanAgent with tools
-      const locationContext = this.extractLocationContext(message);
+      // Use provided location context if available, otherwise try to extract from message
+      const locationContext = providedLocationContext || this.extractLocationContext(message);
       const mediaContext = this.extractMediaContext(media);
       
+      console.log({ 
+        sessionId, 
+        userId, 
+        messageLength: message?.length || 0,
+        hasMedia: media && media.length > 0,
+        currentState: session.currentState 
+      }, "Processing message with OmbudsmanAgent");
+
       const agentResponse = await this.ombudsmanAgent.processMessage(
         message,
-        sessionId || '',
+        sessionId,
         locationContext,
         mediaContext
       );
 
-      // Get updated session data
-      const session = await prisma.conversationSession.findUnique({
-        where: { sessionId: sessionId || '' }
+      // Get updated session data after processing
+      const updatedSession = await prisma.conversationSession.findUnique({
+        where: { sessionId }
       });
+
+      // Get tracking number if complaint exists
+      let trackingNumber: string | undefined = undefined;
+      if (updatedSession?.complaintId) {
+        try {
+          const complaint = await prisma.complaint.findUnique({
+            where: { id: updatedSession.complaintId },
+            select: { trackingNumber: true }
+          });
+          trackingNumber = complaint?.trackingNumber || undefined;
+        } catch (error) {
+          console.error({ error, complaintId: updatedSession.complaintId }, "Error fetching tracking number");
+        }
+      }
 
       return {
         message: agentResponse,
-        sessionId: sessionId || '',
-        state: session?.currentState || ConversationState.greeting,
-        shouldEndSession: session?.currentState === ConversationState.completed,
-        shouldAttachMedia: session?.currentState === ConversationState.evidence_upload && media && media.length > 0,
-        trackingNumber: session?.complaintId ? undefined : undefined // Will be generated when complaint is created
+        sessionId: sessionId,
+        state: updatedSession?.currentState || ConversationState.greeting,
+        shouldEndSession: updatedSession?.currentState === ConversationState.completed,
+        shouldAttachMedia: updatedSession?.currentState === ConversationState.evidence_upload && media && media.length > 0,
+        trackingNumber
       };
     } catch (error: any) {
-      console.error({ error, sessionId }, "Error processing message with OmbudsmanAgent");
+      console.error({ 
+        error: error.message, 
+        stack: error.stack,
+        sessionId, 
+        userId,
+        errorName: error.name,
+        errorCode: error.code
+      }, "Error processing message with OmbudsmanAgent");
+      
+      // Try to update session to error state
+      try {
+        await prisma.conversationSession.update({
+          where: { sessionId },
+          data: {
+            currentState: ConversationState.error,
+            errorReason: error.message || 'Unknown error',
+            lastMessageAt: new Date()
+          }
+        }).catch(() => {
+          // Ignore errors updating session state
+        });
+      } catch (updateError) {
+        console.error({ updateError }, "Failed to update session error state");
+      }
+
       return {
         message: "I apologize, but I encountered an error processing your message. Please try again.",
-        sessionId: sessionId || '',
+        sessionId: sessionId,
         state: ConversationState.error,
         shouldEndSession: false,
         shouldAttachMedia: false

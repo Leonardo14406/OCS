@@ -9,7 +9,6 @@ datasource db {
 
 /// Core user of the citizen-facing portal
 model Account {
-  id                 String              @id @default(cuid())
   role               UserRole
   fullName           String
   email              String              @unique
@@ -32,6 +31,7 @@ model Account {
   preferredLanguage  String              @default("en")
   createdAt          DateTime            @default(now())
   lastLoginAt        DateTime?
+  id                 String              @id @default(cuid()) @db.Uuid
   assignedCases      Complaint[]         @relation("ComplaintAssignedOfficer")
   filedComplaints    Complaint[]         @relation("ComplaintComplainant")
   notes              InvestigationNote[] @relation("AccountInvestigationNotes")
@@ -60,22 +60,20 @@ model Complaint {
   priority          ComplaintPriority        @default(medium)
   submittedAt       DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
-  complainantId     String?
-  assignedOfficerId String?
   tags              String[]
   deletedAt         DateTime?
+  assignedOfficerId String?                  @db.Uuid
+  complainantId     String?                  @db.Uuid
   statusHistory     ComplaintStatusHistory[]
   summary           ComplaintSummary?
-  assignedOfficer   Account?                 @relation("ComplaintAssignedOfficer", fields: [assignedOfficerId], references: [id])
-  complainant       Account?                 @relation("ComplaintComplainant", fields: [complainantId], references: [id])
+  assignedOfficer   Account?                 @relation("ComplaintAssignedOfficer", fields: [assignedOfficerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  complainant       Account?                 @relation("ComplaintComplainant", fields: [complainantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   evidence          EvidenceItem[]
   notes             InvestigationNote[]
 
   @@index([trackingNumber])
   @@index([status])
   @@index([priority])
-  @@index([complainantId])
-  @@index([assignedOfficerId])
   @@index([submittedAt])
   @@index([deletedAt])
   @@map("complaints")
@@ -148,10 +146,10 @@ model InvestigationNote {
   createdAt   DateTime  @default(now())
   attachments String[]
   complaintId String
-  officerId   String?
   officerName String
+  officerId   String?   @db.Uuid
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
-  officer     Account?  @relation("AccountInvestigationNotes", fields: [officerId], references: [id])
+  officer     Account?  @relation("AccountInvestigationNotes", fields: [officerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("investigation_notes")
 }

@@ -23,9 +23,8 @@ import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/status-badge"
 import { EXTENDED_MOCK_COMPLAINTS } from "@/lib/mock-data"
 import type { Complaint } from "@/lib/types"
-import { Search, ExternalLink } from "lucide-react"
+import { Search } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import Link from "next/link"
 import { format } from "date-fns"
 
 export default function ComplaintOversightPage() {
@@ -119,7 +118,6 @@ export default function ComplaintOversightPage() {
                   <TableHead>Priority</TableHead>
                   <TableHead>Assigned Officer</TableHead>
                   <TableHead>Submitted</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -151,13 +149,6 @@ export default function ComplaintOversightPage() {
                       {complaint.assignedOfficer || "Unassigned"}
                     </TableCell>
                     <TableCell className="text-sm">{format(complaint.submittedAt, "MMM d, yyyy")}</TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/officer/complaint/${complaint.id}`}>
-                        <Button variant="ghost" size="icon" title="View Details">
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

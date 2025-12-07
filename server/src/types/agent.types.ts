@@ -1,10 +1,18 @@
 import { ConversationState, Gender } from '@prisma/client';
 
+export interface LocationContext {
+  hasLocation?: boolean;
+  latitude?: number;
+  longitude?: number;
+  locationDescription?: string;
+}
+
 export interface AgentMessage {
   userId?: string;
   message: string;
   media?: MediaFile[];
   sessionId?: string;
+  locationContext?: LocationContext;
 }
 
 export interface MediaFile {
