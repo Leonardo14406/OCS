@@ -14,7 +14,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
 import { OfficerHeader } from "@/components/officer-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,14 +28,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import {
-  mockGetComplaintNotes,
-  mockAddInvestigationNote,
-  mockUpdateComplaintStatus,
-  mockGetComplaintSummary,
-} from "@/lib/mock-officer-api"
-import { EXTENDED_MOCK_COMPLAINTS, MOCK_CURRENT_OFFICER } from "@/lib/mock-data"
-import type { Complaint, InvestigationNote, ComplaintSummary } from "@/lib/types"
+import type { Complaint, InvestigationNote } from "@/lib/types"
 import {
   Calendar,
   User,
@@ -53,6 +46,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { format } from "date-fns"
+import { useWebSocket } from "@/hooks/useWebSocket"
 
 export default function ComplaintDetailPage() {
   const params = useParams()
@@ -60,8 +54,14 @@ export default function ComplaintDetailPage() {
 
   const [complaint, setComplaint] = useState<Complaint | null>(null)
   const [notes, setNotes] = useState<InvestigationNote[]>([])
-  const [aiSummary, setAiSummary] = useState<ComplaintSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  // AI streaming state (from WebSocket agent)
+  const { isConnected, sendMessage, messages, error: wsError } = useWebSocket()
+  const [aiStreamText, setAiStreamText] = useState("")
+  const [isAiStreaming, setIsAiStreaming] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const hasRequestedSummaryRef = useRef(false)
 
   // Investigation form state
   const [newNote, setNewNote] = useState("")
@@ -70,22 +70,35 @@ export default function ComplaintDetailPage() {
   const [statusUpdate, setStatusUpdate] = useState("")
   const [statusNote, setStatusNote] = useState("")
 
-  // TODO: Replace with real API call
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true)
-      const complaintData = EXTENDED_MOCK_COMPLAINTS.find((c) => c.id === complaintId)
-      setComplaint(complaintData || null)
+      try {
+        const [complaintRes, notesRes] = await Promise.all([
+          fetch(`/api/officer/complaints/${complaintId}`, { cache: "no-store" }),
+          fetch(`/api/officer/complaints/${complaintId}/notes`, { cache: "no-store" }),
+        ])
 
-      if (complaintData) {
-        const notesData = await mockGetComplaintNotes(complaintId)
-        setNotes(notesData)
+        if (!complaintRes.ok) {
+          setComplaint(null)
+          setNotes([])
+        } else {
+          const complaintData = (await complaintRes.json()) as Complaint
+          setComplaint(complaintData)
 
-        const summaryData = await mockGetComplaintSummary(complaintId)
-        setAiSummary(summaryData)
+          if (notesRes.ok) {
+            const notesData = (await notesRes.json()) as InvestigationNote[]
+            setNotes(notesData)
+          } else {
+            setNotes([])
+          }
+        }
+      } catch {
+        setComplaint(null)
+        setNotes([])
+      } finally {
+        setIsLoading(false)
       }
-
-      setIsLoading(false)
     }
 
     fetchData()
@@ -95,36 +108,42 @@ export default function ComplaintDetailPage() {
     if (!newNote.trim() || !complaint) return
 
     setIsSavingNote(true)
-    // TODO: Replace with real API call
-    const note = await mockAddInvestigationNote(complaint.id, newNote, isInternalNote)
-    setNotes([...notes, note])
-    setNewNote("")
-    setIsSavingNote(false)
+    try {
+      const res = await fetch(`/api/officer/complaints/${complaint.id}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: newNote, isInternal: isInternalNote }),
+      })
+
+      if (res.ok) {
+        const created = (await res.json()) as InvestigationNote
+        setNotes((prev) => [created, ...prev])
+        setNewNote("")
+      }
+    } finally {
+      setIsSavingNote(false)
+    }
   }
 
   const handleStatusUpdate = async () => {
     if (!statusUpdate || !statusNote.trim() || !complaint) return
 
-    // TODO: Replace with real API call and proper state management
-    await mockUpdateComplaintStatus(complaint.id, statusUpdate, statusNote)
+    try {
+      const res = await fetch(`/api/officer/complaints/${complaint.id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: statusUpdate, note: statusNote }),
+      })
 
-    // Update local state
-    setComplaint({
-      ...complaint,
-      status: statusUpdate as any,
-      statusHistory: [
-        ...complaint.statusHistory,
-        {
-          status: statusUpdate as any,
-          timestamp: new Date(),
-          note: statusNote,
-          updatedBy: MOCK_CURRENT_OFFICER.fullName,
-        },
-      ],
-    })
-
-    setStatusUpdate("")
-    setStatusNote("")
+      if (res.ok) {
+        const data = await res.json()
+        const updatedComplaint = data.complaint as Complaint
+        setComplaint(updatedComplaint)
+      }
+    } finally {
+      setStatusUpdate("")
+      setStatusNote("")
+    }
   }
 
   if (isLoading) {
@@ -198,56 +217,35 @@ export default function ComplaintDetailPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Left Column - Main Content */}
           <div className="space-y-6 lg:col-span-2">
-            {/* AI Summary */}
-            {aiSummary && (
-              <Card className="border-primary/20 bg-primary/5">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                    AI-Generated Summary
-                  </CardTitle>
-                  <CardDescription>
-                    Automated analysis generated on {format(aiSummary.generatedAt, "MMM d, yyyy")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="leading-relaxed">{aiSummary.aiGeneratedSummary}</p>
-
-                  <div>
-                    <h4 className="mb-2 font-semibold">Key Points:</h4>
-                    <ul className="ml-4 space-y-1 text-sm">
-                      {aiSummary.keyPoints.map((point, idx) => (
-                        <li key={idx} className="list-disc">
-                          {point}
-                        </li>
-                      ))}
-                    </ul>
+            {/* AI Insights (streamed via WebSocket, not wrapped in a Card) */}
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  <h2 className="text-lg font-semibold">AI Insights for This Complaint</h2>
+                </div>
+                {isAiStreaming && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Generating summary…</span>
                   </div>
+                )}
+              </div>
 
-                  <div>
-                    <h4 className="mb-2 font-semibold">Suggested Actions:</h4>
-                    <ul className="ml-4 space-y-1 text-sm">
-                      {aiSummary.suggestedActions.map((action, idx) => (
-                        <li key={idx} className="list-disc">
-                          {action}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+              {aiError && (
+                <p className="text-xs text-destructive">{aiError}</p>
+              )}
 
-                  {aiSummary.similarComplaints.length > 0 && (
-                    <Alert>
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>Pattern Detected</AlertTitle>
-                      <AlertDescription>
-                        {aiSummary.similarComplaints.length} similar complaints found. This may indicate a systemic
-                        issue.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+              <div
+                className="max-h-64 overflow-y-auto rounded-md border bg-muted/40 p-3 text-sm whitespace-pre-wrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+              >
+                {aiStreamText
+                  ? aiStreamText
+                  : isConnected
+                  ? "AI is generating a summary and recommended actions for this complaint. This may take a few moments…"
+                  : "Connecting to AI assistant…"}
+              </div>
+            </section>
 
             {/* Complaint Details */}
             <Card>

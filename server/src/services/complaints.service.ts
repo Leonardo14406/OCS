@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { ComplaintStatus, ComplaintPriority, Gender } from '@prisma/client';
+import { ComplaintStatus, ComplaintPriority, Gender, UserRole } from '@prisma/client';
 import { randomBytes } from 'crypto';
 
 export interface ComplaintSubmissionData {
@@ -46,6 +46,34 @@ export class ComplaintsService {
     const trackingNumber = this.generateTrackingNumber();
     
     try {
+      // Auto-assign to an officer in the same ministry (department) with the
+      // lowest number of assignedComplaints to keep distribution even.
+      let assignedOfficerId: string | null = null;
+
+      if (data.ministry) {
+        const officers = await prisma.account.findMany({
+          where: {
+            role: UserRole.officer,
+            isActive: true,
+            department: data.ministry,
+          },
+          select: {
+            id: true,
+            assignedComplaints: true,
+          },
+        });
+
+        if (officers.length > 0) {
+          const sorted = [...officers].sort((a, b) => {
+            const aCount = a.assignedComplaints ?? 0;
+            const bCount = b.assignedComplaints ?? 0;
+            return aCount - bCount;
+          });
+
+          assignedOfficerId = sorted[0].id;
+        }
+      }
+
       const complaint = await prisma.complaint.create({
         data: {
           trackingNumber,
@@ -62,8 +90,21 @@ export class ComplaintsService {
           status: ComplaintStatus.submitted,
           priority: this.determinePriority(data.category),
           submittedAt: new Date(),
+          assignedOfficerId: assignedOfficerId || undefined,
         }
       });
+
+      // If we assigned an officer, increment their assignedComplaints counter
+      if (assignedOfficerId) {
+        await prisma.account.update({
+          where: { id: assignedOfficerId },
+          data: {
+            assignedComplaints: {
+              increment: 1,
+            },
+          },
+        });
+      }
 
       // Create initial status history entry
       await prisma.complaintStatusHistory.create({

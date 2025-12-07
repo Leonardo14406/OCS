@@ -94,6 +94,24 @@ export const toolDefinitions: ChatCompletionTool[] = [
       }
     }
   },
+  // Officer summary tools
+  {
+    type: "function",
+    function: {
+      name: "summarize_complaint_for_officer",
+      description: "Load a specific complaint (including status history and evidence) by its internal ID so you can provide an investigator-facing summary and recommended next steps.",
+      parameters: {
+        type: "object",
+        properties: {
+          complaintId: {
+            type: "string",
+            description: "The internal database ID of the complaint (UUID)"
+          }
+        },
+        required: ["complaintId"]
+      }
+    }
+  },
   // Tracking tools
   {
     type: "function",
@@ -383,7 +401,12 @@ export async function getComplaintStatusHandler(args: any, context: ToolContext)
         statusHistory: {
           orderBy: { timestamp: 'desc' },
           take: 5
-        }
+        },
+        notes: {
+          where: { isInternal: false },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        },
       }
     });
 
@@ -407,7 +430,8 @@ export async function getComplaintStatusHandler(args: any, context: ToolContext)
         submittedAt: complaint.submittedAt,
         updatedAt: complaint.updatedAt,
         evidenceCount: complaint.evidence.length,
-        recentStatusHistory: complaint.statusHistory
+        recentStatusHistory: complaint.statusHistory,
+        recentPublicNotes: complaint.notes,
       }
     };
   } catch (error: any) {
@@ -415,6 +439,66 @@ export async function getComplaintStatusHandler(args: any, context: ToolContext)
       success: false,
       error: error.message,
       message: "Failed to get complaint status"
+    };
+  }
+}
+
+export async function summarizeComplaintForOfficerHandler(args: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const { complaintId } = args;
+    const { prisma } = context;
+
+    if (!complaintId || typeof complaintId !== "string") {
+      return {
+        success: false,
+        error: "Invalid complaintId",
+        message: "A valid complaintId string is required to summarize a complaint for officers.",
+      };
+    }
+
+    const complaint = await prisma.complaint.findUnique({
+      where: { id: complaintId },
+      include: {
+        evidence: true,
+        statusHistory: {
+          orderBy: { timestamp: "asc" },
+        },
+      },
+    });
+
+    if (!complaint) {
+      return {
+        success: false,
+        error: "Complaint not found",
+        message: "No complaint was found for the given complaintId.",
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        id: complaint.id,
+        trackingNumber: complaint.trackingNumber,
+        subject: complaint.subject,
+        description: complaint.description,
+        ministry: complaint.ministry,
+        category: complaint.category,
+        priority: complaint.priority,
+        status: complaint.status,
+        submittedAt: complaint.submittedAt,
+        updatedAt: complaint.updatedAt,
+        isAnonymous: complaint.isAnonymous,
+        evidence: complaint.evidence,
+        statusHistory: complaint.statusHistory,
+      },
+      message:
+        "Complaint loaded successfully for officer-facing AI summarization. Use this data to provide a concise summary, risk assessment, and 3-5 recommended investigative actions.",
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message,
+      message: "Failed to load complaint for officer summary.",
     };
   }
 }
@@ -427,5 +511,6 @@ export const toolHandlers = {
   extract_contact_info: extractContactInfoHandler,
   create_complaint: createComplaintHandler,
   get_complaint_status: getComplaintStatusHandler,
+  summarize_complaint_for_officer: summarizeComplaintForOfficerHandler,
   ...classificationToolHandlers,
 };
