@@ -235,6 +235,7 @@ model ConversationSession {
   classifiedMinistry     String?
   classifiedCategory     String?
   paraphrasedDescription String?
+  preferNoContact        Boolean           @default(false)
   lastMessageAt          DateTime          @default(now())
   messageCount           Int               @default(0)
   completedAt            DateTime?
