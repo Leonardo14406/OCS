@@ -215,13 +215,23 @@ export async function createComplaintHandler(args: any, context: ToolContext): P
       };
     }
 
-    if (!session.description || !session.ministry) {
+    if (!session.description) {
       return {
         success: false,
-        error: "Missing required information",
+        error: "Missing complaint description",
         message: "Please provide a description of your complaint before submitting. The system will automatically classify it and assign the appropriate ministry."
       };
     }
+
+    // Auto-classify the complaint using the classification service
+    const { ComplaintClassificationService } = await import('../../lib/ai/classification-engine');
+    const classificationService = new ComplaintClassificationService(prisma);
+    
+    const classification = await classificationService.classifyComplaint(session.description);
+    
+    // Use classification results or fallback to session data
+    const finalMinistry = classification.ministry || session.ministry || 'Ministry of Health and Sanitation';
+    const finalCategory = classification.category || session.category || 'service_delivery';
 
     const trackingNumber = `OMB-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
 
@@ -233,8 +243,8 @@ export async function createComplaintHandler(args: any, context: ToolContext): P
         phone: session.phone || "",
         address: session.address,
         isAnonymous,
-        ministry: session.ministry,
-        category: session.category || "Other",
+        ministry: finalMinistry,
+        category: finalCategory,
         subject: session.subject || "Complaint",
         description: session.description,
         incidentDate: session.incidentDate,
@@ -244,13 +254,32 @@ export async function createComplaintHandler(args: any, context: ToolContext): P
       }
     });
 
+    // Update session with classification results and complaint ID
     await prisma.conversationSession.update({
       where: { sessionId },
       data: {
         complaintId: complaint.id,
-        currentState: "completed"
+        currentState: "completed",
+        classifiedMinistry: finalMinistry,
+        classifiedCategory: finalCategory,
+        ministry: finalMinistry,
+        category: finalCategory
       }
     });
+
+    // Log the classification with complaint
+    const logger = (await import('../../lib/logger')).logger;
+    logger.info(
+      {
+        complaintId: complaint.id,
+        trackingNumber: complaint.trackingNumber,
+        ministry: finalMinistry,
+        category: finalCategory,
+        confidence: classification.confidence,
+        fallbackUsed: classification.fallbackUsed
+      },
+      'Complaint created with automatic classification'
+    );
 
     return {
       success: true,
@@ -258,9 +287,17 @@ export async function createComplaintHandler(args: any, context: ToolContext): P
         trackingNumber: complaint.trackingNumber,
         status: complaint.status,
         priority: complaint.priority,
-        submittedAt: complaint.submittedAt
+        submittedAt: complaint.submittedAt,
+        ministry: finalMinistry,
+        category: finalCategory,
+        classification: {
+          confidence: classification.confidence,
+          fallbackUsed: classification.fallbackUsed
+        }
       },
-      message: `Complaint created successfully with tracking number: ${trackingNumber}`
+      message: `Complaint created successfully with tracking number: ${trackingNumber}. ` +
+               `Automatically classified as ${finalCategory} for ${finalMinistry}.` +
+               (classification.fallbackUsed ? ' (Used semantic matching for classification)' : '')
     };
   } catch (error: any) {
     return {

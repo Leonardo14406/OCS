@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma';
-import { ClassificationEngine, ClassificationEngineConfig } from '../../lib/ai/classification-engine';
+import { ClassificationEngine } from '../../lib/ai/classification-core';
 import { ConversationState } from '@prisma/client';
 import { HandlerResponse } from './greeting-handler';
 
@@ -7,22 +7,7 @@ export class ClassificationHandler {
   private classificationEngine: ClassificationEngine;
 
   constructor() {
-    const config: ClassificationEngineConfig = {
-      ministries: [
-        'Health', 'Education', 'Finance', 'Interior', 'Justice', 
-        'Transport', 'Agriculture', 'Environment', 'Labor', 
-        'Foreign Affairs', 'Defense', 'Social Welfare', 'Housing',
-        'Energy', 'Communications', 'Tourism', 'Trade', 'Local Government'
-      ],
-      categories: [
-        'corruption', 'service_delivery', 'misconduct', 'negligence', 
-        'discrimination', 'harassment', 'fraud', 'bureaucratic_delay',
-        'policy_violation', 'ethical_breach', 'misappropriation', 'other'
-      ],
-      confidenceThreshold: 0.4
-    };
-    
-    this.classificationEngine = new ClassificationEngine(config);
+    this.classificationEngine = new ClassificationEngine();
   }
 
   async handle(sessionId: string, userMessage: string): Promise<HandlerResponse> {
@@ -35,12 +20,28 @@ export class ClassificationHandler {
     }
 
     // Use ClassificationEngine for final classification
-    const classification = await this.classificationEngine.classify(session.description || '');
+    const ministries = [
+      'Health', 'Education', 'Finance', 'Interior', 'Justice', 
+      'Transport', 'Agriculture', 'Environment', 'Labor', 
+      'Foreign Affairs', 'Defense', 'Social Welfare', 'Housing',
+      'Energy', 'Communications', 'Tourism', 'Trade', 'Local Government'
+    ];
+    const categories = [
+      'corruption', 'service_delivery', 'misconduct', 'negligence', 
+      'discrimination', 'harassment', 'fraud', 'bureaucratic_delay',
+      'policy_violation', 'ethical_breach', 'misappropriation', 'other'
+    ];
+    
+    const classification = await this.classificationEngine.classify(
+      session.description || '',
+      ministries,
+      categories
+    );
     
     // Check if classification meets minimum requirements
-    if (!this.classificationEngine.isAcceptableClassification(classification)) {
+    if (!classification.ministry || !classification.category || classification.confidence < 0.4) {
       return {
-        message: this.classificationEngine.getRejectionMessage(),
+        message: "I'm sorry, but I couldn't classify your complaint with sufficient confidence. Could you please provide more details about which government ministry is involved and what type of issue you're experiencing?",
         nextState: ConversationState.error,
         shouldUpdateSession: false
       };

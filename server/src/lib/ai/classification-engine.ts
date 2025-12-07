@@ -1,153 +1,293 @@
-import OpenAI from 'openai';
+import { ClassificationEngine } from './classification-core';
+import { SemanticMatcher } from './semantic-matcher';
+import { logger } from '../logger';
+import { PrismaClient } from '@prisma/client';
 
 export interface ClassificationResult {
-  ministry: string | null;
-  category: string | null;
+  ministry: string;
+  category: string;
   confidence: number;
+  fallbackUsed: boolean;
+  originalMinistry?: string;
+  originalCategory?: string;
 }
 
-export interface ClassificationEngineConfig {
-  ministries: string[];
-  categories: string[];
-  confidenceThreshold?: number;
+export interface ClassificationConfig {
+  confidenceThreshold: number;
+  enableSemanticFallback: boolean;
+  maxSemanticDistance: number;
 }
 
-export class ClassificationEngine {
-  private client: OpenAI;
-  private config: ClassificationEngineConfig;
+export class ComplaintClassificationService {
+  private classificationEngine: ClassificationEngine;
+  private semanticMatcher: SemanticMatcher;
+  private prisma: PrismaClient;
+  private config: ClassificationConfig;
+  private cache: Map<string, { data: any; timestamp: number }> = new Map();
 
-  constructor(config: ClassificationEngineConfig) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY environment variable is required');
-    }
-    
-    this.client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-    
+  constructor(prisma: PrismaClient, config?: Partial<ClassificationConfig>) {
+    this.prisma = prisma;
     this.config = {
-      confidenceThreshold: 0.4,
+      confidenceThreshold: 0.6,
+      enableSemanticFallback: true,
+      maxSemanticDistance: 0.3,
       ...config
+    };
+    
+    this.classificationEngine = new ClassificationEngine();
+    this.semanticMatcher = new SemanticMatcher();
+  }
+
+  /**
+   * Main classification method - the only place where classification logic exists
+   */
+  async classifyComplaint(complaintText: string): Promise<ClassificationResult> {
+    try {
+      logger.info({ textLength: complaintText.length }, 'Starting complaint classification');
+
+      // Get current ministries and categories from database
+      const { ministries, categories } = await this.getDatabaseTaxonomy();
+      
+      // Primary classification using AI engine
+      const primaryResult = await this.classificationEngine.classify(
+        complaintText,
+        ministries,
+        categories
+      );
+
+      logger.info(
+        { 
+          ministry: primaryResult.ministry,
+          category: primaryResult.category,
+          confidence: primaryResult.confidence 
+        },
+        'Primary classification result'
+      );
+
+      // Check if we need fallback matching
+      if (primaryResult.confidence < this.config.confidenceThreshold || 
+          !primaryResult.ministry || 
+          !primaryResult.category) {
+        
+        logger.info({}, 'Using semantic fallback matching');
+        const fallbackResult = await this.applySemanticFallback(
+          complaintText,
+          primaryResult,
+          ministries,
+          categories
+        );
+        
+        return fallbackResult;
+      }
+
+      // Validate that ministry and category exist in database
+      const validatedResult = await this.validateAgainstDatabase(
+        primaryResult,
+        ministries,
+        categories
+      );
+
+      return {
+        ministry: validatedResult.ministry,
+        category: validatedResult.category,
+        confidence: primaryResult.confidence,
+        fallbackUsed: false
+      };
+
+    } catch (error) {
+      logger.error({ error }, 'Classification failed');
+      
+      // Emergency fallback to default ministry/category
+      return this.getEmergencyFallback();
+    }
+  }
+
+  /**
+   * Update complaint record with classification results
+   */
+  async updateComplaintClassification(
+    complaintId: string,
+    classification: ClassificationResult
+  ): Promise<void> {
+    try {
+      await this.prisma.complaint.update({
+        where: { id: complaintId },
+        data: {
+          ministry: classification.ministry,
+          category: classification.category
+        }
+      });
+
+      // Also update conversation session if exists
+      await this.updateSessionClassification(complaintId, classification);
+
+      logger.info(
+        { 
+          complaintId,
+          ministry: classification.ministry,
+          category: classification.category,
+          fallbackUsed: classification.fallbackUsed
+        },
+        'Complaint classification updated'
+      );
+    } catch (error) {
+      logger.error({ error, complaintId }, 'Failed to update complaint classification');
+      throw error;
+    }
+  }
+
+  /**
+   * Apply semantic similarity fallback when primary classification is insufficient
+   */
+  private async applySemanticFallback(
+    complaintText: string,
+    primaryResult: any,
+    ministries: string[],
+    categories: string[]
+  ): Promise<ClassificationResult> {
+    const fallbackResult = await this.semanticMatcher.findBestMatch(
+      complaintText,
+      ministries,
+      categories,
+      primaryResult
+    );
+
+    return {
+      ministry: fallbackResult.ministry,
+      category: fallbackResult.category,
+      confidence: fallbackResult.confidence,
+      fallbackUsed: true,
+      originalMinistry: primaryResult.ministry,
+      originalCategory: primaryResult.category
     };
   }
 
   /**
-   * Classify complaint text using predefined JSON schema
+   * Validate classification results against database entries
    */
-  async classify(complaintText: string): Promise<ClassificationResult> {
-    const ministriesList = this.config.ministries.join(', ');
-    const categoriesList = this.config.categories.join(', ');
+  private async validateAgainstDatabase(
+    result: any,
+    ministries: string[],
+    categories: string[]
+  ): Promise<{ ministry: string; category: string }> {
+    let validatedMinistry = result.ministry;
+    let validatedCategory = result.category;
 
-    const prompt = `
-You are a classification expert for government complaints. Analyze the following complaint and classify it according to the provided schema.
+    // Find closest matching ministry if not found
+    if (result.ministry && !ministries.includes(result.ministry)) {
+      validatedMinistry = await this.semanticMatcher.findClosestString(
+        result.ministry,
+        ministries
+      );
+    }
 
-COMPLAINT TEXT:
-"${complaintText}"
+    // Find closest matching category if not found
+    if (result.category && !categories.includes(result.category)) {
+      validatedCategory = await this.semanticMatcher.findClosestString(
+        result.category,
+        categories
+      );
+    }
 
-AVAILABLE MINISTRIES:
-${ministriesList}
+    return {
+      ministry: validatedMinistry || ministries[0],
+      category: validatedCategory || categories[0]
+    };
+  }
 
-AVAILABLE CATEGORIES:
-${categoriesList}
+  /**
+   * Get current taxonomy from database with caching
+   */
+  private async getDatabaseTaxonomy(): Promise<{ ministries: string[]; categories: string[] }> {
+    const cacheKey = 'taxonomy';
+    const cached = this.getCachedData(cacheKey);
+    if (cached) {
+      return cached;
+    }
 
-TASK:
-Classify this complaint by selecting the most appropriate ministry and category from the lists above. Respond ONLY with a valid JSON object matching this exact schema:
-{
-  "ministry": "string or null",
-  "category": "string or null", 
-  "confidence": "number between 0 and 1"
-}
+    // Fetch from database
+    const [ministries, categories] = await Promise.all([
+      this.prisma.ministry.findMany({ select: { name: true } }),
+      this.prisma.complaintCategory.findMany({ select: { name: true } })
+    ]);
 
-RULES:
-1. If no ministry from the list is appropriate, set ministry to null
-2. If no category from the list is appropriate, set category to null
-3. Confidence should reflect how certain you are about the classification
-4. Be conservative with confidence - if unsure, assign a lower score
-5. Consider the specific details and context of the complaint
-6. If the complaint is unclear or doesn't match available options, both ministry and category should be null
+    const result = {
+      ministries: ministries.map(m => m.name),
+      categories: categories.map(c => c.name)
+    };
 
-Example valid responses:
-{"ministry": "Health", "category": "service_delivery", "confidence": 0.85}
-{"ministry": null, "category": null, "confidence": 0.2}
-{"ministry": "Education", "category": "misconduct", "confidence": 0.72}
-`;
+    // Cache for 5 minutes
+    this.setCachedData(cacheKey, result, 300000);
+    return result;
+  }
 
+  /**
+   * Update conversation session classification
+   */
+  private async updateSessionClassification(
+    complaintId: string,
+    classification: ClassificationResult
+  ): Promise<void> {
     try {
-      const response = await this.client.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        response_format: { type: 'json_object' }
+      const complaint = await this.prisma.complaint.findUnique({
+        where: { id: complaintId },
+        select: { complainantId: true }
       });
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('No response from OpenAI');
+      if (complaint?.complainantId) {
+        const session = await this.prisma.conversationSession.findFirst({
+          where: { userId: complaint.complainantId }
+        });
+
+        if (session) {
+          await this.prisma.conversationSession.update({
+            where: { sessionId: session.sessionId },
+            data: {
+              classifiedMinistry: classification.ministry,
+              classifiedCategory: classification.category
+            }
+          });
+        }
       }
-
-      const result = JSON.parse(content);
-      
-      // Validate and sanitize the result
-      const classification: ClassificationResult = {
-        ministry: this.validateMinistry(result.ministry),
-        category: this.validateCategory(result.category),
-        confidence: this.validateConfidence(result.confidence)
-      };
-
-      return classification;
     } catch (error) {
-      console.error('Error in ClassificationEngine:', error);
-      return {
-        ministry: null,
-        category: null,
-        confidence: 0
-      };
+      logger.warn({ error, complaintId }, 'Could not update session classification');
     }
   }
 
   /**
-   * Check if classification meets minimum requirements
+   * Emergency fallback when all else fails
    */
-  isAcceptableClassification(result: ClassificationResult): boolean {
-    return (
-      result.ministry !== null &&
-      result.confidence >= this.config.confidenceThreshold!
-    );
+  private getEmergencyFallback(): ClassificationResult {
+    return {
+      ministry: 'Ministry of Health and Sanitation',
+      category: 'service_delivery',
+      confidence: 0.1,
+      fallbackUsed: true
+    };
   }
 
   /**
-   * Get rejection message for unacceptable classifications
+   * Cache management helpers
    */
-  getRejectionMessage(): string {
-    return "I'm sorry, I cannot process this type of complaint.";
+  private getCachedData(key: string): any {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < 300000) {
+      return cached.data;
+    }
+    return null;
   }
 
-  private validateMinistry(ministry: any): string | null {
-    if (typeof ministry !== 'string' || !ministry.trim()) {
-      return null;
-    }
-    
-    const normalizedMinistry = ministry.trim();
-    return this.config.ministries.includes(normalizedMinistry) ? normalizedMinistry : null;
+  private setCachedData(key: string, data: any, ttl: number): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
   }
 
-  private validateCategory(category: any): string | null {
-    if (typeof category !== 'string' || !category.trim()) {
-      return null;
-    }
-    
-    const normalizedCategory = category.trim();
-    return this.config.categories.includes(normalizedCategory) ? normalizedCategory : null;
-  }
-
-  private validateConfidence(confidence: any): number {
-    const num = Number(confidence);
-    if (isNaN(num) || num < 0) {
-      return 0;
-    }
-    if (num > 1) {
-      return 1;
-    }
-    return num;
+  /**
+   * Clear caches (useful for testing or when taxonomy changes)
+   */
+  clearCache(): void {
+    this.cache.clear();
   }
 }
