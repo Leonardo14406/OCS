@@ -44,7 +44,7 @@ export default function EnhancedOfficerLogin() {
         },
         body: JSON.stringify({
           email,
-          redirectTo: "/officer"
+          redirectTo: "/api/auth/official-redirect",
         }),
       })
 
@@ -60,12 +60,16 @@ export default function EnhancedOfficerLogin() {
         return
       }
 
-      // Step 2: User is now synced, proceed with Kinde login
+      // Step 2: User is now synced, proceed with Kinde login.
+      // After Kinde login, our /api/auth/official-redirect endpoint will
+      // inspect the database role and send officers to /officer and admins
+      // to /admin. Citizens will be denied.
       setSyncStatus("synced")
       setSyncMessage("User synced successfully. Redirecting to login...")
 
-      // Redirect to Kinde login page
-      router.push("/api/auth/login?post_login_redirect_url=/officer")
+      // Redirect to Kinde login page and on success go through our
+      // server-side role-based redirect.
+      router.push("/api/auth/login?post_login_redirect_url=/api/auth/official-redirect")
 
     } catch (err) {
       console.error("Login error:", err)
@@ -147,7 +151,7 @@ export default function EnhancedOfficerLogin() {
             </Button>
 
             <div className="text-center">
-              <LoginLink postLoginRedirectURL="/officer">
+              <LoginLink postLoginRedirectURL="/api/auth/official-redirect">
                 <Button 
                   variant="link" 
                   className="text-sm" 

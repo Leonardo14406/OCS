@@ -1,17 +1,54 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Menu, LayoutDashboard, FileText, TrendingUp, LogOut } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { MOCK_CURRENT_OFFICER } from "@/lib/mock-data"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { LogoutLink } from "@kinde-oss/kinde-auth-nextjs/components"
 
 export function OfficerHeader() {
   const pathname = usePathname()
+
+  const [profile, setProfile] = useState<{
+    fullName?: string | null
+    department?: string | null
+  } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadProfile = async () => {
+      try {
+        const res = await fetch("/api/profile", { cache: "no-store" })
+        if (!res.ok) return
+        const data = (await res.json()) as { fullName?: string | null; department?: string | null }
+        if (!cancelled) setProfile(data)
+      } catch {
+        if (!cancelled) setProfile(null)
+      }
+    }
+
+    loadProfile()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const displayName =
+    profile?.fullName || "Officer"
+
+  const initials = displayName
+    .split(" ")
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
 
   const isActive = (path: string) => pathname === path
 
@@ -46,15 +83,14 @@ export function OfficerHeader() {
             <ThemeToggle />
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-primary/10 text-sm">
-                {MOCK_CURRENT_OFFICER.fullName
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")}
+                {initials}
               </AvatarFallback>
             </Avatar>
             <div className="hidden flex-col lg:flex">
-              <span className="text-sm font-medium leading-tight">{MOCK_CURRENT_OFFICER.fullName}</span>
-              <span className="text-xs text-muted-foreground">{MOCK_CURRENT_OFFICER.department}</span>
+              <span className="text-sm font-medium leading-tight">{displayName}</span>
+              {profile?.department && (
+                <span className="text-xs text-muted-foreground">{profile.department}</span>
+              )}
             </div>
             <LogoutLink>
               <Button variant="ghost" size="icon" className="ml-2">
@@ -77,15 +113,14 @@ export function OfficerHeader() {
             <div className="mt-6 flex items-center gap-3 border-b pb-4">
               <Avatar>
                 <AvatarFallback>
-                  {MOCK_CURRENT_OFFICER.fullName
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")}
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col">
-                <span className="font-medium">{MOCK_CURRENT_OFFICER.fullName}</span>
-                <span className="text-sm text-muted-foreground">{MOCK_CURRENT_OFFICER.department}</span>
+                <span className="font-medium">{displayName}</span>
+                {profile?.department && (
+                  <span className="text-sm text-muted-foreground">{profile.department}</span>
+                )}
               </div>
             </div>
             <nav className="mt-6 flex flex-col gap-2">

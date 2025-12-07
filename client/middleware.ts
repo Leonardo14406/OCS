@@ -5,7 +5,24 @@ import { NextResponse, type NextRequest } from "next/server" // Now has kindeAut
 export default withAuth(
   async function middleware(req: NextRequest) {
     const url = req.nextUrl
-    const role = (req.kindeAuth?.user?.org_role as string) || "citizen"
+    
+    // Get role primarily from Kinde's org_role; if missing, fall back to DB via API.
+    let role = (req.kindeAuth?.user?.org_role as string | undefined)
+    if (!role) {
+      try {
+        const roleRes = await fetch(new URL("/api/auth/role", req.url), {
+          headers: { cookie: req.headers.get("cookie") ?? "" },
+          cache: "no-store",
+        })
+        if (roleRes.ok) {
+          const data = (await roleRes.json()) as { role?: string }
+          if (data?.role) role = data.role
+        }
+      } catch {
+        // fall back to citizen
+      }
+    }
+    role = role || "citizen"
 
     // Protect staff dashboards (/dashboard/*, /officer*, /admin*)
     const isOfficerRoute =

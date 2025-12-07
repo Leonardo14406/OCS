@@ -31,8 +31,6 @@ export default function ComplaintQueue() {
   // Filter states
   const [statusFilter, setStatusFilter] = useState("all")
   const [priorityFilter, setPriorityFilter] = useState("all")
-  const [ministryFilter, setMinistryFilter] = useState("all")
-  const [assignmentFilter, setAssignmentFilter] = useState("all")
 
   useEffect(() => {
     const fetchComplaints = async () => {
@@ -63,15 +61,11 @@ export default function ComplaintQueue() {
   const resetFilters = () => {
     setStatusFilter("all")
     setPriorityFilter("all")
-    setMinistryFilter("all")
-    setAssignmentFilter("all")
   }
 
   const activeFilterCount =
     (statusFilter !== "all" ? 1 : 0) +
-    (priorityFilter !== "all" ? 1 : 0) +
-    (ministryFilter !== "all" ? 1 : 0) +
-    (assignmentFilter !== "all" ? 1 : 0)
+    (priorityFilter !== "all" ? 1 : 0)
 
   return (
     <div className="min-h-screen bg-background">
@@ -98,7 +92,7 @@ export default function ComplaintQueue() {
                 </Button>
               )}
             </div>
-            <CardDescription>Filter complaints by status, priority, ministry, and assignment</CardDescription>
+            <CardDescription>Filter complaints by status and priority</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -136,36 +130,7 @@ export default function ComplaintQueue() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Ministry</label>
-                <Select value={ministryFilter} onValueChange={setMinistryFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Ministries</SelectItem>
-                    {MOCK_MINISTRIES.map((ministry) => (
-                      <SelectItem key={`${ministry.id}-${ministry.name}`} value={ministry.name}>
-                        {ministry.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Assignment</label>
-                <Select value={assignmentFilter} onValueChange={setAssignmentFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Complaints</SelectItem>
-                    <SelectItem value="me">Assigned to Me</SelectItem>
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Ministry and assignment filters removed: each ministry is tied to an officer */}
             </div>
           </CardContent>
         </Card>

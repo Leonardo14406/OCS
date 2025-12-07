@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useKindeBrowserClient } from "@kinde-oss/kinde-auth-nextjs"
@@ -13,7 +14,34 @@ export function AdminHeader() {
   const pathname = usePathname()
   const { user } = useKindeBrowserClient()
 
+  const [profile, setProfile] = useState<{
+    fullName?: string | null
+    department?: string | null
+  } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadProfile = async () => {
+      try {
+        const res = await fetch("/api/profile", { cache: "no-store" })
+        if (!res.ok) return
+        const data = (await res.json()) as { fullName?: string | null; department?: string | null }
+        if (!cancelled) setProfile(data)
+      } catch {
+        if (!cancelled) setProfile(null)
+      }
+    }
+
+    loadProfile()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const displayName = (() => {
+    if (profile?.fullName) return profile.fullName
     if (!user) return "Admin User"
     const name = `${user.given_name ?? ""} ${user.family_name ?? ""}`.trim()
     return name || (user.email as string | undefined) || "Admin User"
@@ -68,7 +96,9 @@ export function AdminHeader() {
             <ThemeToggle />
             <div className="hidden md:block text-right">
               <div className="text-sm font-medium">{displayName}</div>
-              <div className="text-xs text-muted-foreground">Super Admin</div>
+              <div className="text-xs text-muted-foreground">
+                {profile?.department || "Administration"}
+              </div>
             </div>
             <Avatar>
               <AvatarFallback className="bg-primary text-primary-foreground">

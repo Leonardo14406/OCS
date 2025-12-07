@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { randomUUID } from "crypto"
+import { randomBytes } from "crypto"
 import { ComplaintPriority, ComplaintStatus, UserRole } from "@prisma/client"
 import { db } from "@/lib/db"
 import { getCurrentAccount } from "@/lib/auth"
@@ -56,21 +56,11 @@ export async function POST(req: NextRequest) {
 
     const now = new Date()
 
-    // Generate a human-friendly complaint ID / tracking number like CMP-YYYY-XXX
-    const year = now.getFullYear()
-    const prefix = `CMP-${year}-`
-    const countForYear = await db.complaint.count({
-      where: {
-        id: {
-          startsWith: prefix,
-        },
-      },
-    })
-    const complaintId = `${prefix}${String(countForYear + 1).padStart(3, "0")}`
-
-    // Generate a private, unguessable tracking number for citizens to use
-    // when tracking their complaint without authentication.
-    const trackingNumber = randomUUID()
+    // Generate a single canonical OMB-style identifier and use it for both
+    // the complaint primary key and the public tracking number so they match.
+    const timestamp = Date.now().toString(36).toUpperCase()
+    const randomId = randomBytes(4).toString("hex").toUpperCase()
+    const complaintIdentifier = `OMB-${timestamp}-${randomId}`
 
     // If a logged-in, non-anonymous user submits the complaint, attach it to
     // their Account so it shows up in their profile history.
@@ -117,8 +107,8 @@ export async function POST(req: NextRequest) {
 
     const complaint = await db.complaint.create({
       data: {
-        id: complaintId,
-        trackingNumber,
+        id: complaintIdentifier,
+        trackingNumber: complaintIdentifier,
         complainantName: anon ? "Anonymous" : complainantName || "Anonymous",
         email: anon ? "anonymous@system.gov" : email || "anonymous@system.gov",
         phone: anon ? "N/A" : phone || "N/A",
@@ -176,7 +166,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ id: complaint.id, trackingNumber: complaint.trackingNumber }, { status: 201 })
+    return NextResponse.json({ id: complaintIdentifier, trackingNumber: complaintIdentifier }, { status: 201 })
   } catch (error) {
     console.error("[api/complaints] error", error)
     return NextResponse.json({ error: "Failed to submit complaint" }, { status: 500 })

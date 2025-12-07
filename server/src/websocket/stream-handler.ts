@@ -98,29 +98,13 @@ export class WebSocketStreamHandler {
   }
 
   private async streamText(ws: WebSocket, text: string, sessionId: string): Promise<void> {
-    const chunkSize = 3; // Small chunks for real-time streaming
-    const delay = 30; // 30ms between chunks for natural typing effect
+    // For the citizen portal web UI, send the full response in a single
+    // message to avoid visually duplicated-looking chunks on the client.
+    const success = this.sendChunk(ws, { delta: text, done: true });
 
-    for (let i = 0; i < text.length; i += chunkSize) {
-      const chunk = text.slice(i, i + chunkSize);
-      
-      // Send chunk
-      const success = this.sendChunk(ws, { delta: chunk });
-      
-      if (!success) {
-        // Connection closed prematurely
-        logger.warn({ sessionId }, 'WebSocket connection closed during streaming');
-        return;
-      }
-
-      // Small delay for natural typing effect
-      if (i + chunkSize < text.length) {
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
+    if (!success) {
+      logger.warn({ sessionId }, 'WebSocket connection closed while sending response');
     }
-
-    // Send completion signal
-    this.sendChunk(ws, { done: true });
   }
 
   private sendChunk(ws: WebSocket, chunk: StreamChunk): boolean {

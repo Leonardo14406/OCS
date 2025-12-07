@@ -19,6 +19,9 @@ export async function GET(req: NextRequest) {
       city: account.city,
       state: account.state,
       postalCode: account.postalCode,
+      department: account.department,
+      role: account.role,
+      officerRole: account.officerRole,
     })
   } catch (error) {
     console.error("[api/profile] get error", error)
@@ -81,6 +84,9 @@ export async function PUT(req: NextRequest) {
       city: updated.city,
       state: updated.state,
       postalCode: updated.postalCode,
+      department: updated.department,
+      role: updated.role,
+      officerRole: updated.officerRole,
     })
   } catch (error) {
     console.error("[api/profile] update error", error)

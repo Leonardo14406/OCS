@@ -2,15 +2,29 @@ import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server"
 import { AdminRole, OfficerRole, UserRole } from "@prisma/client"
 import { db } from "./db"
 
-async function updateKindeUserRole(kindeUserId: string, role: UserRole) {
+async function updateKindeUserRole(kindeUserId: string, role: UserRole): Promise<boolean> {
   const issuerUrl = process.env.KINDE_ISSUER_URL
   const clientId = process.env.KINDE_CLIENT_ID
   const clientSecret = process.env.KINDE_CLIENT_SECRET
-  const audience = process.env.KINDE_AUDIENCE
 
-  if (!issuerUrl || !clientId || !clientSecret || !audience) {
-    throw new Error("Kinde Management API env vars missing")
+  // Debug: Log credential availability (without sensitive values)
+  console.log("🔍 Kinde Credentials Check:")
+  console.log("  KINDE_ISSUER_URL:", issuerUrl ? "✅ Set" : "❌ Missing")
+  console.log("  KINDE_CLIENT_ID:", clientId ? `✅ Set (${clientId.substring(0, 8)}...)` : "❌ Missing")
+  console.log("  KINDE_CLIENT_SECRET:", clientSecret ? "✅ Set (hidden)" : "❌ Missing")
+
+  // If core env vars are missing, skip the update (not critical for auth flow)
+  if (!issuerUrl || !clientId || !clientSecret) {
+    console.warn("Kinde Management API env vars missing - skipping role update in Kinde")
+    return false
   }
+
+  // Build token request body
+  const tokenBody = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: clientId,
+    client_secret: clientSecret,
+  })
 
   // Get Management API access token
   const tokenRes = await fetch(`${issuerUrl.replace(/\/$/, "")}/oauth2/token`, {
@@ -18,12 +32,7 @@ async function updateKindeUserRole(kindeUserId: string, role: UserRole) {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: clientId,
-      client_secret: clientSecret,
-      audience,
-    }),
+    body: tokenBody,
   })
 
   if (!tokenRes.ok) {
@@ -53,19 +62,28 @@ async function updateKindeUserRole(kindeUserId: string, role: UserRole) {
 
   if (!updateRes.ok) {
     const errorBody = await updateRes.text().catch(() => "")
-    throw new Error(`Failed to update Kinde user role: ${errorBody}`)
+    console.error(`Failed to update Kinde user role: ${errorBody}`)
+    return false
   }
+  
+  return true
 }
 
 async function createKindeUser(email: string, fullName: string) {
   const issuerUrl = process.env.KINDE_ISSUER_URL
   const clientId = process.env.KINDE_CLIENT_ID
   const clientSecret = process.env.KINDE_CLIENT_SECRET
-  const audience = process.env.KINDE_AUDIENCE
 
-  if (!issuerUrl || !clientId || !clientSecret || !audience) {
-    throw new Error("Kinde Management API env vars missing")
+  if (!issuerUrl || !clientId || !clientSecret) {
+    throw new Error("Kinde Management API env vars missing - cannot create user in Kinde")
   }
+
+  // Build token request body
+  const tokenBody = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: clientId,
+    client_secret: clientSecret,
+  })
 
   // Get Management API access token
   const tokenRes = await fetch(`${issuerUrl.replace(/\/$/, "")}/oauth2/token`, {
@@ -73,12 +91,7 @@ async function createKindeUser(email: string, fullName: string) {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: clientId,
-      client_secret: clientSecret,
-      audience,
-    }),
+    body: tokenBody,
   })
 
   if (!tokenRes.ok) {
@@ -181,6 +194,12 @@ export async function getCurrentAccount() {
     })
 
     if (existingByEmail) {
+      // Preserve the existing role - never downgrade admin/officer to citizen
+      // If the existing account has admin or officer role, keep it
+      const preservedRole = existingByEmail.role === UserRole.admin || existingByEmail.role === UserRole.officer
+        ? existingByEmail.role
+        : UserRole.citizen
+
       account = await db.account.update({
         where: { id: existingByEmail.id },
         data: {
@@ -189,8 +208,28 @@ export async function getCurrentAccount() {
           email,
           avatar: (kindeUser.picture as string | null) ?? existingByEmail.avatar,
           lastLoginAt: now,
+          // Explicitly preserve role and related fields for admin/officer
+          role: preservedRole,
+          // Preserve adminRole and officerRole if they exist
+          ...(existingByEmail.adminRole && { adminRole: existingByEmail.adminRole }),
+          ...(existingByEmail.officerRole && { officerRole: existingByEmail.officerRole }),
         },
       })
+
+      // CRITICAL: Update Kinde's org_role to match database role
+      // This is required for middleware to work correctly (middleware can't access Prisma)
+      if (preservedRole !== UserRole.citizen) {
+        try {
+          const updated = await updateKindeUserRole(kindeUserId, preservedRole)
+          if (!updated) {
+            console.warn(`⚠️  Kinde Management API not configured. User ${email} has role ${preservedRole} in database but Kinde org_role may be incorrect.`)
+            console.warn(`   To fix: Set KINDE_ISSUER_URL, KINDE_CLIENT_ID, KINDE_CLIENT_SECRET (KINDE_AUDIENCE is optional), or manually set org_role="${preservedRole}" in Kinde dashboard.`)
+          }
+        } catch (error) {
+          // Non-critical error - log but don't break auth flow
+          console.warn('Failed to update Kinde role, but continuing:', error)
+        }
+      }
 
       return account
     }
@@ -249,6 +288,11 @@ export async function getCurrentAccount() {
       email ||
       "Citizen"
 
+    // Preserve admin/officer roles - never downgrade to citizen
+    const preservedRole = account.role === UserRole.admin || account.role === UserRole.officer
+      ? account.role
+      : UserRole.citizen
+
     account = await db.account.update({
       where: { id: account.id },
       data: {
@@ -256,8 +300,28 @@ export async function getCurrentAccount() {
         email,
         avatar: (kindeUser.picture as string | null) ?? account.avatar,
         lastLoginAt: now,
+        // Explicitly preserve role for admin/officer users
+        role: preservedRole,
+        // Preserve adminRole and officerRole if they exist
+        ...(account.adminRole && { adminRole: account.adminRole }),
+        ...(account.officerRole && { officerRole: account.officerRole }),
       },
     })
+
+      // CRITICAL: Update Kinde's org_role to match database role if it's admin/officer
+      // This is required for middleware to work correctly (middleware can't access Prisma)
+      if (preservedRole !== UserRole.citizen) {
+        try {
+          const updated = await updateKindeUserRole(kindeUserId, preservedRole)
+          if (!updated) {
+            console.warn(`⚠️  Kinde Management API not configured. User ${email} has role ${preservedRole} in database but Kinde org_role may be incorrect.`)
+            console.warn(`   To fix: Set KINDE_ISSUER_URL, KINDE_CLIENT_ID, KINDE_CLIENT_SECRET (KINDE_AUDIENCE is optional), or manually set org_role="${preservedRole}" in Kinde dashboard.`)
+          }
+        } catch (error) {
+          // Non-critical error - log but don't break auth flow
+          console.warn('Failed to update Kinde role, but continuing:', error)
+        }
+      }
 
     // If this existing account matches the SUPER_ADMIN_EMAIL and there is no
     // super admin yet, promote it to admin / super_admin.
@@ -274,6 +338,14 @@ export async function getCurrentAccount() {
             adminRole: AdminRole.super_admin,
           },
         })
+        
+        // Update Kinde role (optional - only if env vars are available)
+        try {
+          await updateKindeUserRole(kindeUserId, UserRole.admin)
+        } catch (error) {
+          // Non-critical error - log but don't break auth flow
+          console.warn('Failed to update Kinde role for super admin, but continuing:', error)
+        }
       }
     }
   }
@@ -303,14 +375,30 @@ export async function syncDatabaseUserWithKinde(email: string) {
       return { success: true, message: 'User already synced with Kinde', user: dbUser }
     }
 
-    // Create user in Kinde
-    const kindeUser = await createKindeUser(dbUser.email, dbUser.fullName)
-
-    // Update user with role in Kinde
-    if (!kindeUser.id) {
-      throw new Error("Kinde user creation response missing id")
+    // Create user in Kinde (only if env vars are available)
+    let kindeUser
+    try {
+      kindeUser = await createKindeUser(dbUser.email, dbUser.fullName)
+      
+      // Update user with role in Kinde (non-critical if it fails)
+      if (!kindeUser.id) {
+        throw new Error("Kinde user creation response missing id")
+      }
+      
+      await updateKindeUserRole(kindeUser.id, dbUser.role)
+    } catch (error) {
+      // If Kinde Management API is not configured, treat this as a best-effort sync.
+      // The user exists in the database; on first successful Kinde login,
+      // getCurrentAccount will attach the Kinde user to this account by email.
+      if (error instanceof Error && error.message.includes("Kinde Management API env vars missing")) {
+        return {
+          success: true,
+          message: "User exists in database; proceed with Kinde login (Management API not configured)",
+          user: dbUser,
+        }
+      }
+      throw error
     }
-    await updateKindeUserRole(kindeUser.id, dbUser.role)
 
     // Update database with kindeUserId and permissions
     const updatedUser = await db.account.update({

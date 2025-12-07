@@ -31,7 +31,7 @@ model Account {
   preferredLanguage  String              @default("en")
   createdAt          DateTime            @default(now())
   lastLoginAt        DateTime?
-  id                 String              @id @default(cuid()) @db.Uuid
+  id                 String              @id @default(uuid()) @db.Uuid
   assignedCases      Complaint[]         @relation("ComplaintAssignedOfficer")
   filedComplaints    Complaint[]         @relation("ComplaintComplainant")
   notes              InvestigationNote[] @relation("AccountInvestigationNotes")

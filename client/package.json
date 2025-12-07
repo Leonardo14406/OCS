@@ -6,7 +6,9 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "seed:ministries": "tsx prisma/seed-ministries.ts",
+    "seed:fetch-officers-admins": "tsx prisma/seed-fetch-officers-admins.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -78,6 +80,7 @@
     "postcss": "^8.5",
     "prisma": "^6.19.0",
     "tailwindcss": "^4.1.9",
+    "tsx": "^4.7.0",
     "tw-animate-css": "1.3.3",
     "typescript": "^5"
   }
