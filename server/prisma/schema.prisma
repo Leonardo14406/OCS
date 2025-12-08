@@ -240,6 +240,7 @@ model ConversationSession {
   completedAt            DateTime?
   errorReason            String?
   complaintId            String?
+  preferNoContact        Boolean           @default(false)
 
   @@index([sessionId])
   @@index([currentState])

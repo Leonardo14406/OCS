@@ -51,6 +51,11 @@ The project is organized into three main parts:
 
 Both the client and server share a **PostgreSQL** database schema (managed via Prisma) hosted on Supabase.
 
+### Hosted services
+
+- Agent server (AI + WebSocket backend) is hosted on Render at: https://ocs-1-qyd9.onrender.com
+- WhatsApp server / worker is hosted on Render at: https://ocs-d8mm.onrender.com
+
 ---
 
 ## Key Features
