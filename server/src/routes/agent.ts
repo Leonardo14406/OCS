@@ -17,14 +17,24 @@ interface MulterRequest extends Request {
 router.post('/session', (req, res) => {
   try {
     const sessionId = randomBytes(16).toString('hex');
-    res.json({ 
+
+    // Determine WebSocket URL from environment or request
+    // In production, set WEBSOCKET_URL to your server's wss:// URL (e.g., wss://ocs-1-qyd9.onrender.com)
+    let websocketUrl = process.env.WEBSOCKET_URL;
+    if (!websocketUrl) {
+      const host = req.get('host') || `localhost:${process.env.PORT || 3000}`;
+      const protocol = req.secure || req.get('x-forwarded-proto') === 'https' ? 'wss' : 'ws';
+      websocketUrl = `${protocol}://${host}`;
+    }
+
+    res.json({
       sessionId,
       message: 'New session created. Connect via WebSocket to start chatting with Leoma.',
-      websocketUrl: `ws://localhost:${process.env.PORT || 3000}`,
+      websocketUrl,
       agent: 'Leoma'
     });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to create session',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
@@ -84,7 +94,7 @@ router.post('/cleanup', async (req, res) => {
   try {
     const { maxAgeHours = 24 } = req.body;
     const deletedCount = await conversationManager.cleanupExpiredSessions(maxAgeHours);
-    
+
     res.json({
       message: 'Cleanup completed',
       deletedSessions: deletedCount,
@@ -105,18 +115,18 @@ const phoneSessionMap = new Map<string, string>();
 // Helper to detect if string is base64 or binary data
 function isBinaryOrBase64(str: string): boolean {
   if (!str || str.length < 50) return false;
-  
+
   // Check if it looks like base64 (starts with common JPEG/image headers)
   if (str.startsWith('/9j/') || str.startsWith('iVBORw') || str.startsWith('R0lGOD')) {
     return true;
   }
-  
+
   // Check if mostly non-printable characters
   const nonPrintable = str.split('').filter(c => {
     const code = c.charCodeAt(0);
     return code < 32 || code > 126;
   }).length;
-  
+
   return nonPrintable / str.length > 0.3;
 }
 
@@ -216,8 +226,8 @@ router.post('/webhook/whatsapp', requireApiKey, async (req: Request, res) => {
         );
 
         // Filter out binary/base64 data from description
-        const cleanDescription = (location.description && !isBinaryOrBase64(location.description)) 
-          ? location.description 
+        const cleanDescription = (location.description && !isBinaryOrBase64(location.description))
+          ? location.description
           : (location.address && !isBinaryOrBase64(location.address))
             ? location.address
             : null;
@@ -242,7 +252,7 @@ router.post('/webhook/whatsapp', requireApiKey, async (req: Request, res) => {
           },
           "Media attachment received"
         );
-        
+
         // Validate media file
         const mediaFile: MediaFile = {
           name: media.filename || 'media',
