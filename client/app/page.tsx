@@ -15,8 +15,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { FileText, Search, Shield, Clock, CheckCircle, Users, ArrowRight } from "lucide-react"
+import { getComplaintStatsSummary } from "@/lib/stats"
 
-export default function HomePage() {
+export default async function HomePage() {
+  const stats = await getComplaintStatsSummary().catch(() => null)
+
+  const totalComplaints = stats?.totalComplaints ?? 0
+  const resolvedComplaints = stats?.resolvedComplaints ?? 0
+  const averageResolutionTime = stats?.averageResolutionTime
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
@@ -61,8 +68,8 @@ export default function HomePage() {
                   <FileText className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold">12,847</div>
-                  <p className="text-xs text-muted-foreground mt-1">+12% from last month</p>
+                  <div className="text-3xl font-bold">{totalComplaints.toLocaleString()}</div>
+                  <p className="text-xs text-muted-foreground mt-1">All time complaints received</p>
                 </CardContent>
               </Card>
 
@@ -72,8 +79,12 @@ export default function HomePage() {
                   <CheckCircle className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold">10,234</div>
-                  <p className="text-xs text-muted-foreground mt-1">79.6% resolution rate</p>
+                  <div className="text-3xl font-bold">{resolvedComplaints.toLocaleString()}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {totalComplaints > 0
+                      ? `${Math.round((resolvedComplaints / totalComplaints) * 100)}% resolution rate`
+                      : "Resolution rate will appear when complaints are received"}
+                  </p>
                 </CardContent>
               </Card>
 
@@ -83,8 +94,12 @@ export default function HomePage() {
                   <Clock className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold">7.2 days</div>
-                  <p className="text-xs text-muted-foreground mt-1">-2.3 days improvement</p>
+                  <div className="text-3xl font-bold">
+                    {typeof averageResolutionTime === "number"
+                      ? `${averageResolutionTime.toFixed(1)} days`
+                      : "N/A"}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Based on resolved complaints</p>
                 </CardContent>
               </Card>
             </div>
