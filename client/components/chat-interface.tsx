@@ -20,16 +20,21 @@ interface ChatMessage {
 
 interface ChatInterfaceProps {
   onCompleted?: (trackingNumber: string) => void;
+  userName?: string | null;
+  userEmail?: string | null;
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onCompleted }) => {
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onCompleted, userName: propsUserName, userEmail }) => {
   const [inputMessage, setInputMessage] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const { isConnected, sendMessage, messages, error, sessionId } = useWebSocket();
+  const { isConnected, sendMessage, messages, error, sessionId, userName } = useWebSocket({
+    userName: propsUserName,
+    userEmail,
+  });
 
   // Scroll to bottom when chatMessages change
   useEffect(() => {
@@ -186,11 +191,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onCompleted }) => 
               className={`flex w-full ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] rounded-lg px-3 py-2 shadow-sm ${
-                  msg.sender === "user"
+                className={`max-w-[80%] rounded-lg px-3 py-2 shadow-sm ${msg.sender === "user"
                     ? "bg-primary text-primary-foreground rounded-br-none"
                     : "bg-background border rounded-bl-none"
-                }`}
+                  }`}
               >
                 <div className="text-xs mb-1 opacity-75">
                   {msg.sender === "user" ? "You" : "Leoma AI"}

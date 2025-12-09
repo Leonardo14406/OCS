@@ -9,6 +9,8 @@ export interface WebSocketMessage {
   message: string;
   locationContext?: LocationContext;
   mediaContext?: MediaContext;
+  userName?: string;
+  userEmail?: string;
 }
 
 export interface StreamChunk {
@@ -28,11 +30,11 @@ export class WebSocketStreamHandler {
     ws: WebSocket,
     data: WebSocketMessage
   ): Promise<void> {
-    const { sessionId, userId, message, locationContext, mediaContext } = data;
+    const { sessionId, userId, message, locationContext, mediaContext, userName, userEmail } = data;
 
     try {
       logger.info(
-        { sessionId, userId, messageLength: message.length },
+        { sessionId, userId, userName, messageLength: message.length },
         'Starting WebSocket stream processing'
       );
 
@@ -45,7 +47,9 @@ export class WebSocketStreamHandler {
         message,
         sessionId,
         locationContext,
-        mediaContext
+        mediaContext,
+        userName,
+        userEmail
       );
 
     } catch (error: any) {
@@ -70,7 +74,9 @@ export class WebSocketStreamHandler {
     userMessage: string,
     sessionId: string,
     locationContext?: LocationContext,
-    mediaContext?: MediaContext
+    mediaContext?: MediaContext,
+    userName?: string,
+    userEmail?: string
   ): Promise<void> {
     try {
       // Get the agent's response
@@ -78,7 +84,8 @@ export class WebSocketStreamHandler {
         userMessage,
         sessionId,
         locationContext,
-        mediaContext
+        mediaContext,
+        { userName, userEmail }
       );
 
       // Stream the response character by character for real-time effect

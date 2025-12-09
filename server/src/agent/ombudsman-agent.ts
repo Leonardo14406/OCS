@@ -37,6 +37,11 @@ interface SessionContext {
   };
 }
 
+interface UserIdentity {
+  userName?: string;
+  userEmail?: string;
+}
+
 export class OmbudsmanAgent {
   private openai: OpenAI;
   private prisma: PrismaClient;
@@ -52,7 +57,7 @@ export class OmbudsmanAgent {
     });
     this.prisma = new PrismaClient();
     this.conversationHistory = new Map();
-    
+
     this.systemPrompt = `You are Leoma, an AI assistant for the Ombudsman office of Sierra Leone. Your role is to help citizens file complaints, track existing complaints, and provide information about the complaint process.
 
 CRITICAL INTRODUCTION RULE:
@@ -147,6 +152,19 @@ TOOL USAGE:
 - Use get_complaint_status for tracking inquiries
 - Use classify_complaint to categorize issues automatically
 - Use upload_evidence for document attachments
+
+USER IDENTITY HANDLING:
+- If you see [LOGGED_IN_USER: Name] in the context, the user is authenticated
+- For logged-in users: Use their name automatically for the complaint - do NOT ask them for their name again
+- For anonymous users ([ANONYMOUS_USER]): Ask ONCE if they want to provide a name or stay anonymous
+- NEVER repeatedly ask for personal information - if the user says "no", "anonymous", or ignores the question, proceed without it
+
+DECISIVE COMPLAINT SUBMISSION:
+- Once you have a clear complaint description, IMMEDIATELY classify and submit it
+- Do NOT ask for multiple confirmations like "are you sure?", "would you like to add anything else?", "shall I proceed?"
+- One confirmation is enough: briefly summarize what you understood and submit
+- If the user said "submit" or "yes" or confirmed in any way, call create_complaint immediately
+- NEVER loop asking for the same information - if session data exists, use it
 
 IMPORTANT RULES:
 - ALWAYS start with the required introduction and menu for new conversations
@@ -247,7 +265,8 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
     userMessage: string,
     sessionId: string,
     locationContext?: LocationContext,
-    mediaContext?: MediaContext
+    mediaContext?: MediaContext,
+    userIdentity?: UserIdentity
   ): Promise<string> {
     try {
       if (!sessionId || sessionId.trim() === '') {
@@ -278,7 +297,7 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
 
       // Get current session state from database
       const sessionData = await this.getSessionData(sessionId);
-      
+
       if (!sessionData) {
         logger.warn({ sessionId }, "Session not found in database, will create during processing");
       }
@@ -296,7 +315,12 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
         history &&
         history.messages.length === 1 // Only system prompt exists
       ) {
-        const introMessage = `Hello! 🌟 I'm Leoma, your AI assistant for the Ombudsman office of Sierra Leone. I'm here to help you! 🤝
+        // Personalize greeting for logged-in users
+        const greeting = userIdentity?.userName
+          ? `Hello, ${userIdentity.userName}! 🌟`
+          : `Hello! 🌟`;
+
+        const introMessage = `${greeting} I'm Leoma, your AI assistant for the Ombudsman office of Sierra Leone. I'm here to help you! 🤝
 
       I can assist you with:
 
@@ -317,10 +341,16 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
         return introMessage;
       }
 
-
       let contextualMessage = `[Session: ${sessionId}]`;
       contextualMessage += `\n[Conversation Context: ${sessionData?.currentState || 'new_conversation'}]`;
-      
+
+      // Include user identity context for the AI
+      if (userIdentity?.userName) {
+        contextualMessage += `\n[LOGGED_IN_USER: ${userIdentity.userName}${userIdentity.userEmail ? ` (${userIdentity.userEmail})` : ''}]`;
+      } else {
+        contextualMessage += `\n[ANONYMOUS_USER: User is not logged in]`;
+      }
+
       if (locationContext?.hasLocation && locationContext.latitude && locationContext.longitude) {
         contextualMessage += `\n[LOCATION_SHARED: ${locationContext.latitude}, ${locationContext.longitude}${locationContext.locationDescription ? ` - ${locationContext.locationDescription}` : ""}]`;
       }
@@ -328,7 +358,7 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
       if (mediaContext?.hasMedia && mediaContext.data) {
         contextualMessage += `\n[MEDIA_ATTACHED: ${mediaContext.filename}, ${mediaContext.mimeType}]`;
       }
-      
+
       contextualMessage += `\n\n${userMessage}`;
 
       messages.push({
@@ -343,7 +373,7 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
       }
 
       logger.info({ sessionId, messageCount: messages.length, model: config.openai.model }, "Calling OpenAI API");
-      
+
       let completion = await this.openai.chat.completions.create({
         model: config.openai.model,
         messages: messages,
@@ -445,9 +475,9 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
         errorStatus: error.status,
         errorResponse: error.response?.data || error.response || undefined
       };
-      
+
       logger.error(errorDetails, "Error processing message in OmbudsmanAgent");
-      
+
       // Provide more specific error messages based on error type
       if (error.status === 401 || error.message?.includes('API key')) {
         return "I apologize, but there's an authentication issue with the AI service. Please contact support.";
@@ -458,7 +488,7 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
       } else if (error.message?.includes('network') || error.code === 'ECONNREFUSED') {
         return "I apologize, but there's a network issue. Please try again later.";
       }
-      
+
       return "Sorry, I encountered an error. Please try again later.";
     }
   }
@@ -496,8 +526,8 @@ Remember: You are Leoma, a trusted guide helping citizens navigate the Ombudsman
         }
       };
     } catch (error: any) {
-      logger.error({ 
-        error: error.message, 
+      logger.error({
+        error: error.message,
         stack: error.stack,
         sessionId,
         errorCode: error.code,

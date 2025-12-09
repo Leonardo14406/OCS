@@ -16,6 +16,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useKindeBrowserClient } from "@kinde-oss/kinde-auth-nextjs"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
@@ -26,8 +27,15 @@ import { ChatInterface } from "@/components/chat-interface"
 
 export default function SubmitComplaintPage() {
   const router = useRouter()
+  const { user, isAuthenticated } = useKindeBrowserClient()
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const [complaintId, setComplaintId] = useState("")
+
+  // Get user name from Kinde user object
+  const userName = isAuthenticated && user
+    ? `${user.given_name || ""} ${user.family_name || ""}`.trim() || user.email || null
+    : null
+  const userEmail = isAuthenticated && user?.email ? user.email : null
 
   if (submitSuccess && complaintId) {
     return (
@@ -106,6 +114,8 @@ export default function SubmitComplaintPage() {
               setComplaintId(trackingNumber)
               setSubmitSuccess(true)
             }}
+            userName={userName}
+            userEmail={userEmail}
           />
         </div>
       </main>

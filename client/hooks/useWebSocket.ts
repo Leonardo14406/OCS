@@ -15,6 +15,12 @@ export interface UseWebSocketReturn {
   messages: WebSocketMessage[];
   error: string | null;
   sessionId: string | null;
+  userName: string | null;
+}
+
+export interface UseWebSocketOptions {
+  userName?: string | null;
+  userEmail?: string | null;
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -35,12 +41,20 @@ async function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export const useWebSocket = (): UseWebSocketReturn => {
+export const useWebSocket = (options?: UseWebSocketOptions): UseWebSocketReturn => {
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<WebSocketMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(options?.userName || null);
   const wsRef = useRef<WebSocket | null>(null);
+  const userEmailRef = useRef<string | null>(options?.userEmail || null);
+
+  // Update refs when options change
+  useEffect(() => {
+    setUserName(options?.userName || null);
+    userEmailRef.current = options?.userEmail || null;
+  }, [options?.userName, options?.userEmail]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,13 +139,13 @@ export const useWebSocket = (): UseWebSocketReturn => {
 
     const mediaPayload = media && media.length > 0
       ? await Promise.all(
-          media.map(async (file) => ({
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            data: await fileToBase64(file),
-          }))
-        )
+        media.map(async (file) => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          data: await fileToBase64(file),
+        }))
+      )
       : undefined;
 
     const payload = {
@@ -139,6 +153,9 @@ export const useWebSocket = (): UseWebSocketReturn => {
       sessionId,
       message,
       media: mediaPayload,
+      // Include user identity if logged in
+      userName: userName || undefined,
+      userEmail: userEmailRef.current || undefined,
     };
 
     wsRef.current.send(JSON.stringify(payload));
@@ -150,5 +167,6 @@ export const useWebSocket = (): UseWebSocketReturn => {
     messages,
     error,
     sessionId,
+    userName,
   };
 };
