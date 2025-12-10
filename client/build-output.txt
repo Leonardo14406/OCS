@@ -1,0 +1,251 @@
+﻿
+> my-v0-project@0.1.0 build
+> next build
+
+npm : 
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+At line:1 char:1
++ npm run build 2>&1 | 
+Out-File -FilePath 
+build-output.txt -Encoding 
+ut ...
++ ~~~~~~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: ([baseli  
+  ne-brows...ping@latest -   
+ D`:String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+   Γû▓ Next.js 16.0.3 (Turbopack)
+   - Environments: .env
+
+ ΓÜá The "middleware" file 
+convention is deprecated. 
+Please use "proxy" instead. 
+Learn more: https://nextjs.or
+g/docs/messages/middleware-to
+-proxy
+   Creating an optimized production build ...
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+ Γ£ô Compiled successfully in 79s
+   Skipping validation of types
+   Collecting page data using 11 workers ...
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+   Generating static pages using 11 workers (0/43) ...
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+[baseline-browser-mapping] 
+The data in this module is 
+over two months old.  To 
+ensure accurate Baseline 
+data, please update: `npm i b
+aseline-browser-mapping@lates
+t -D`
+   Generating static pages using 11 workers (10/43) 
+The width(-1) and height(-1) 
+of chart should be greater 
+than 0,
+       please check the 
+style of container, or the 
+props width(100%) and 
+height(100%),
+       or add a minWidth(0) 
+or minHeight(undefined) or 
+use aspect(undefined) to 
+control the
+       height and width.
+The width(-1) and height(-1) 
+of chart should be greater 
+than 0,
+       please check the 
+style of container, or the 
+props width(100%) and 
+height(100%),
+       or add a minWidth(0) 
+or minHeight(undefined) or 
+use aspect(undefined) to 
+control the
+       height and width.
+The width(-1) and height(-1) 
+of chart should be greater 
+than 0,
+       please check the 
+style of container, or the 
+props width(100%) and 
+height(100%),
+       or add a minWidth(0) 
+or minHeight(undefined) or 
+use aspect(undefined) to 
+control the
+       height and width.
+The width(-1) and height(-1) 
+of chart should be greater 
+than 0,
+       please check the 
+style of container, or the 
+props width(100%) and 
+height(100%),
+       or add a minWidth(0) 
+or minHeight(undefined) or 
+use aspect(undefined) to 
+control the
+       height and width.
+   Generating static pages using 11 workers (21/43) 
+   Generating static pages using 11 workers (32/43) 
+ Γ£ô Generating static pages using 11 workers (43/43) in 8.5s
+   Finalizing page optimization ...
+
+Route (app)
+Γöî Γùï /
+Γö£ Γùï /_not-found
+Γö£ Γùï /access-denied
+Γö£ Γùï /admin
+Γö£ Γùï /admin/analytics
+Γö£ Γùï /admin/login
+Γö£ Γùï /admin/oversight
+Γö£ Γùï /admin/settings
+Γö£ Γùï /admin/users
+Γö£ ╞Æ /api/admin/accounts
+Γö£ ╞Æ /api/admin/analytics/export/[type]
+Γö£ ╞Æ /api/admin/analytics/hotspots
+Γö£ ╞Æ /api/admin/analytics/system-metrics
+Γö£ ╞Æ /api/admin/categories
+Γö£ ╞Æ /api/admin/categories/[id]
+Γö£ ╞Æ /api/admin/complaints
+Γö£ ╞Æ /api/admin/ministries
+Γö£ ╞Æ /api/admin/ministries/[id]
+Γö£ ╞Æ /api/admin/provision-user
+Γö£ ╞Æ /api/admin/seed-taxonomy
+Γö£ ╞Æ /api/agent/session
+Γö£ ╞Æ /api/ai/analyze-complaint
+Γö£ ╞Æ /api/auth/[kindeAuth]
+Γö£ ╞Æ /api/auth/login-with-sync
+Γö£ ╞Æ /api/auth/official-redirect
+Γö£ ╞Æ /api/auth/role
+Γö£ ╞Æ /api/categories
+Γö£ ╞Æ /api/complaints
+Γö£ ╞Æ /api/complaints/[id]
+Γö£ ╞Æ /api/ministries
+Γö£ ╞Æ /api/ministries-categories
+Γö£ ╞Æ /api/officer/complaints
+Γö£ ╞Æ /api/officer/complaints/[id]
+Γö£ ╞Æ /api/officer/complaints/[id]/notes
+Γö£ ╞Æ /api/officer/complaints/[id]/status
+Γö£ ╞Æ /api/officer/patterns
+Γö£ ╞Æ /api/officer/recent-complaints
+Γö£ ╞Æ /api/profile
+Γö£ ╞Æ /api/profile/complaints
+Γö£ ╞Æ /api/public/complaints/track
+Γö£ ╞Æ /api/stats/summary
+Γö£ ╞Æ /api/uploadthing
+Γö£ Γùï /officer
+Γö£ ╞Æ /officer/complaint/[id]
+Γö£ Γùï /officer/login
+Γö£ Γùï /officer/patterns
+Γö£ Γùï /officer/queue
+Γö£ ╞Æ /profile
+Γö£ Γùï /profile/edit
+Γö£ Γùï /submit
+Γöö Γùï /track
+
+
+╞Æ Proxy (Middleware)
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+

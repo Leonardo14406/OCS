@@ -1,55 +1,79 @@
 /*
  * COMPLAINT OVERSIGHT PAGE
  *
- * Real-world replacements needed:
- * 1. Replace reassignComplaint with real API endpoint
- * 2. Add real-time complaint status updates
- * 3. Implement server-side pagination and filtering
- * 4. Add bulk operations for multiple complaints
- * 5. Connect to real database queries
- * 6. Add audit logging for reassignments
+ * Connected to real API endpoint:
+ * - GET /api/admin/complaints for fetching all complaints
  */
 
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { AdminHeader } from "@/components/admin-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/status-badge"
-import { EXTENDED_MOCK_COMPLAINTS } from "@/lib/mock-data"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { Complaint } from "@/lib/types"
-import { Search } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { Search, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 
+interface ComplaintsResponse {
+  complaints: Complaint[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export default function ComplaintOversightPage() {
-  const { toast } = useToast()
-  // TODO: Replace with real state management and API
-  const [complaints, setComplaints] = useState<Complaint[]>(EXTENDED_MOCK_COMPLAINTS)
+  const [complaints, setComplaints] = useState<Complaint[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [priorityFilter, setPriorityFilter] = useState("all")
+  const [total, setTotal] = useState(0)
 
-  const filteredComplaints = complaints.filter((complaint) => {
-    const matchesSearch =
-      complaint.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      complaint.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      complaint.complainantName.toLowerCase().includes(searchQuery.toLowerCase())
+  // Fetch complaints from real API
+  useEffect(() => {
+    let cancelled = false
 
-    const matchesStatus = statusFilter === "all" || complaint.status === statusFilter
-    const matchesPriority = priorityFilter === "all" || complaint.priority === priorityFilter
+    const loadComplaints = async () => {
+      setLoading(true)
+      try {
+        const params = new URLSearchParams()
+        if (statusFilter !== "all") params.set("status", statusFilter)
+        if (priorityFilter !== "all") params.set("priority", priorityFilter)
+        if (searchQuery) params.set("search", searchQuery)
 
-    return matchesSearch && matchesStatus && matchesPriority
-  })
+        const res = await fetch(`/api/admin/complaints?${params.toString()}`, { cache: "no-store" })
+        if (!res.ok) throw new Error("Failed to fetch complaints")
 
-  // In this view, super admins can observe which officer a complaint is
-  // assigned to, but manual reassignment is disabled to keep assignment
-  // automatic and ministry-based.
+        const data = (await res.json()) as ComplaintsResponse
+        if (!cancelled) {
+          setComplaints(data.complaints)
+          setTotal(data.total)
+        }
+      } catch (error) {
+        console.error("Error loading complaints:", error)
+        if (!cancelled) {
+          setComplaints([])
+          setTotal(0)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    // Debounce search queries
+    const timeoutId = setTimeout(loadComplaints, searchQuery ? 300 : 0)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
+  }, [statusFilter, priorityFilter, searchQuery])
 
   return (
     <div className="min-h-screen bg-background">
@@ -65,7 +89,14 @@ export default function ComplaintOversightPage() {
           <CardHeader>
             <CardTitle>All Complaints</CardTitle>
             <CardDescription>
-              {filteredComplaints.length} of {complaints.length} complaints
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading complaints...
+                </span>
+              ) : (
+                `${complaints.length} of ${total} complaints`
+              )}
             </CardDescription>
 
             <div className="flex flex-col md:flex-row gap-3 mt-4">
@@ -121,42 +152,64 @@ export default function ComplaintOversightPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredComplaints.map((complaint) => (
-                  <TableRow key={complaint.id}>
-                    <TableCell className="font-mono text-sm">{complaint.id}</TableCell>
-                    <TableCell className="max-w-xs">
-                      <div className="truncate font-medium">{complaint.subject}</div>
-                      <div className="text-sm text-muted-foreground truncate">{complaint.complainantName}</div>
+                {loading ? (
+                  // Loading skeleton rows
+                  Array.from({ length: 5 }).map((_, index) => (
+                    <TableRow key={`skeleton-${index}`}>
+                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-48 mb-1" />
+                        <Skeleton className="h-3 w-32" />
+                      </TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : complaints.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                      No complaints found matching your filters
                     </TableCell>
-                    <TableCell className="text-sm">{complaint.ministry.replace("Ministry of ", "")}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={complaint.status} />
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          complaint.priority === "urgent"
-                            ? "destructive"
-                            : complaint.priority === "high"
-                              ? "default"
-                              : "secondary"
-                        }
-                      >
-                        {complaint.priority}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {complaint.assignedOfficer || "Unassigned"}
-                    </TableCell>
-                    <TableCell className="text-sm">{format(complaint.submittedAt, "MMM d, yyyy")}</TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  complaints.map((complaint) => (
+                    <TableRow key={complaint.id}>
+                      <TableCell className="font-mono text-sm">{complaint.id}</TableCell>
+                      <TableCell className="max-w-xs">
+                        <div className="truncate font-medium">{complaint.subject}</div>
+                        <div className="text-sm text-muted-foreground truncate">{complaint.complainantName}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">{complaint.ministry.replace("Ministry of ", "")}</TableCell>
+                      <TableCell>
+                        <StatusBadge status={complaint.status} />
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            complaint.priority === "urgent"
+                              ? "destructive"
+                              : complaint.priority === "high"
+                                ? "default"
+                                : "secondary"
+                          }
+                        >
+                          {complaint.priority}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {complaint.assignedOfficer || "Unassigned"}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {format(new Date(complaint.submittedAt), "MMM d, yyyy")}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
-
-            {filteredComplaints.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">No complaints found matching your filters</div>
-            )}
           </CardContent>
         </Card>
       </main>

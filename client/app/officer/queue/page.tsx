@@ -1,14 +1,8 @@
 /*
  * COMPLAINT QUEUE PAGE - OFFICER DASHBOARD
  *
- * Real-world replacements needed:
- * 1. Replace mock data filtering with real database queries
- * 2. Implement pagination for large complaint lists
- * 3. Add real-time updates when new complaints arrive
- * 4. Implement saved filter presets for officers
- * 5. Add bulk actions (assign multiple, export, etc.)
- * 6. Connect to real ministry and officer databases for filter options
- * 7. Add search functionality with full-text search
+ * Connected to real API endpoint:
+ * - GET /api/officer/complaints for fetching assigned complaints
  */
 
 "use client"
@@ -19,7 +13,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ComplaintListItem } from "@/components/complaint-list-item"
-import { MOCK_MINISTRIES } from "@/lib/mock-data"
 import type { Complaint } from "@/lib/types"
 import { Filter, Loader2, FileX } from "lucide-react"
 import { Badge } from "@/components/ui/badge"

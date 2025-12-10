@@ -1,38 +1,22 @@
 /*
- * ADMIN LOGIN PAGE (DUMMY SCREEN)
+ * ADMIN LOGIN PAGE
  *
- * Real-world replacements needed:
- * 1. Implement real authentication system
- * 2. Add password hashing and secure storage
- * 3. Implement session management
- * 4. Add two-factor authentication
- * 5. Add rate limiting and brute force protection
- * 6. Connect to admin user database
+ * Uses Kinde authentication for real login. 
+ * Admins and officers are created in the admin panel and synced with Kinde.
+ * When an admin/officer logs in via Kinde, their role is preserved from the database.
  */
 
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Scale, Shield } from "lucide-react"
+import { Scale, Shield, Loader2, LogIn } from "lucide-react"
+import { LoginLink } from "@kinde-oss/kinde-auth-nextjs/components"
 
 export default function AdminLoginPage() {
-  const router = useRouter()
-  const [credentials, setCredentials] = useState({ username: "", password: "" })
-
-  // TODO: Replace with real authentication
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Mock login - accepts any credentials
-    console.log("[Mock Auth] Admin login attempt:", credentials.username)
-    router.push("/admin")
-  }
+  const [isLoading, setIsLoading] = useState(false)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 flex items-center justify-center p-4">
@@ -44,39 +28,50 @@ export default function AdminLoginPage() {
           <CardTitle className="text-2xl">Admin Portal</CardTitle>
           <CardDescription>Ombudsman Management System</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                value={credentials.username}
-                onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
-                placeholder="admin"
-                required
-              />
-            </div>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground text-center">
+            Sign in with your authorized admin or officer account. Your role and permissions
+            are managed by your system administrator.
+          </p>
 
-            <div>
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={credentials.password}
-                onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
-                placeholder="••••••••"
-                required
-              />
-            </div>
-
-            <Button type="submit" className="w-full gap-2">
-              <Shield className="h-4 w-4" />
-              Sign In
+          <LoginLink
+            postLoginRedirectURL="/api/auth/official-redirect"
+            className="w-full"
+          >
+            <Button
+              className="w-full gap-2"
+              size="lg"
+              onClick={() => setIsLoading(true)}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Redirecting...
+                </>
+              ) : (
+                <>
+                  <Shield className="h-4 w-4" />
+                  Sign In with SSO
+                </>
+              )}
             </Button>
+          </LoginLink>
 
-            <p className="text-xs text-center text-muted-foreground">Demo: Enter any credentials to proceed</p>
-          </form>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Secure Authentication
+              </span>
+            </div>
+          </div>
+
+          <p className="text-xs text-center text-muted-foreground">
+            Not an admin? <a href="/" className="underline hover:text-primary">Return to citizen portal</a>
+          </p>
         </CardContent>
       </Card>
     </div>
